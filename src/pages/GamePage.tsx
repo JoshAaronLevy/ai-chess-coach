@@ -4,9 +4,17 @@ import { Button } from 'primereact/button';
 import { useChess } from '../chess/useChess';
 import { CoachPanel } from '../coach/CoachPanel';
 import { MoveList } from '../app/components/MoveList';
+import '../App.css';
 
 export function GamePage() {
-  const { fen, turn, historySan, lastSan, gameOver, gameResult, onDrop, undo, reset } = useChess();
+  console.info('[GAME_PAGE_ACTIVE] rendering');
+  const { fen, turn, historySan, lastSan, gameOver, gameResult, onPieceDrop, undo, reset } = useChess();
+
+  // Adapter function to match react-chessboard signature
+  const handlePieceDrop = ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
+    if (targetSquare === null) return false;
+    return onPieceDrop(sourceSquare, targetSquare);
+  };
 
   return (
     <div className="grid">
@@ -27,12 +35,14 @@ export function GamePage() {
           </div>
           
           {/* Chessboard Container */}
-          <div className="w-full max-w-35rem">
+          <div className="w-full max-w-35rem board-container">
             <Chessboard
-              position={fen}
-              onPieceDrop={onDrop}
-              boardWidth={Math.min(500, window.innerWidth - 100)}
-              arePiecesDraggable={!gameOver}
+              options={{
+                id: "ChessGame",
+                position: fen,
+                onPieceDrop: handlePieceDrop,
+                allowDragging: !gameOver
+              }}
             />
           </div>
         </div>

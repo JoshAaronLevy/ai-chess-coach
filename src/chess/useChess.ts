@@ -1,5 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { Chess } from 'chess.js';
+
+console.info('[USE_CHESS_INIT]');
 
 /**
  * Type for chess piece colors
@@ -22,7 +24,7 @@ interface ChessGameState {
  * Interface for the useChess hook return value
  */
 interface UseChessReturn extends ChessGameState {
-  onDrop: (from: string, to: string) => boolean;
+  onPieceDrop: (from: string, to: string) => boolean;
   undo: () => void;
   reset: () => void;
   isGameOver: () => boolean;
@@ -33,12 +35,12 @@ interface UseChessReturn extends ChessGameState {
  * Uses chess.js for game logic and state management
  */
 export const useChess = (): UseChessReturn => {
-  // Initialize chess.js instance with starting position
-  const [chess] = useState(() => new Chess());
+  // Persistent chess.js instance using useRef
+  const gameRef = useRef(new Chess());
   
-  // Game state
-  const [fen, setFen] = useState<string>(chess.fen());
-  const [turn, setTurn] = useState<ChessColor>(chess.turn());
+  // Game state derived from gameRef.current
+  const [fen, setFen] = useState<string>(gameRef.current.fen());
+  const [turn, setTurn] = useState<ChessColor>(gameRef.current.turn());
   const [historySan, setHistorySan] = useState<string[]>([]);
   const [lastSan, setLastSan] = useState<string | undefined>(undefined);
   const [gameOver, setGameOver] = useState<boolean>(false);
@@ -48,93 +50,82 @@ export const useChess = (): UseChessReturn => {
    * Updates all state variables based on current chess.js instance
    */
   const updateGameState = useCallback(() => {
-    setFen(chess.fen());
-    setTurn(chess.turn());
-    setHistorySan([...chess.history()]);
+    setFen(gameRef.current.fen());
+    setTurn(gameRef.current.turn());
+    setHistorySan([...gameRef.current.history()]);
     
     // Get the last move if any
-    const history = chess.history();
+    const history = gameRef.current.history();
     setLastSan(history.length > 0 ? history[history.length - 1] : undefined);
     
     // Check game over conditions
-    const isOver = chess.isGameOver();
+    const isOver = gameRef.current.isGameOver();
     setGameOver(isOver);
     
     if (isOver) {
       let result = '';
-      if (chess.isCheckmate()) {
-        result = chess.turn() === 'w' ? 'Black wins by checkmate' : 'White wins by checkmate';
-      } else if (chess.isStalemate()) {
+      if (gameRef.current.isCheckmate()) {
+        result = gameRef.current.turn() === 'w' ? 'Black wins by checkmate' : 'White wins by checkmate';
+      } else if (gameRef.current.isStalemate()) {
         result = 'Draw by stalemate';
-      } else if (chess.isThreefoldRepetition()) {
+      } else if (gameRef.current.isThreefoldRepetition()) {
         result = 'Draw by threefold repetition';
-      } else if (chess.isInsufficientMaterial()) {
+      } else if (gameRef.current.isInsufficientMaterial()) {
         result = 'Draw by insufficient material';
-      } else if (chess.isDraw()) {
+      } else if (gameRef.current.isDraw()) {
         result = 'Draw';
       }
       setGameResult(result);
     } else {
       setGameResult(undefined);
     }
-  }, [chess]);
+  }, []);
 
   /**
    * Handle piece drops from react-chessboard
    * Validates move legality and updates game state if valid
    * Auto-promotes to queen for simplicity
+   * IMPORTANT: Must be synchronous and return boolean
    */
-  const onDrop = useCallback((from: string, to: string): boolean => {
-    try {
-      // Attempt to make the move with auto-promotion to queen
-      const move = chess.move({
-        from,
-        to,
-        promotion: 'q' // Auto-promote to queen for simplicity
-      });
-
-      // If move is null, it was invalid
-      if (move === null) {
-        return false;
-      }
-
-      // Move was successful, update all state
-      updateGameState();
-      return true;
-    } catch (error) {
-      // Invalid move attempted
-      console.warn('Invalid move attempted:', { from, to, error });
-      return false;
-    }
-  }, [chess, updateGameState]);
+  const onPieceDrop = useCallback((from: string, to: string): boolean => {
+    // IMPORTANT: must be sync and return boolean
+    const move = gameRef.current.move({ from, to, promotion: 'q' }); // promotion default is fine
+    console.log('[DROP]', { from, to, move, fen: gameRef.current.fen() });
+    if (move == null) return false;
+    setFen(gameRef.current.fen());
+    setLastSan(move.san);
+    setHistorySan(gameRef.current.history());
+    setGameOver(gameRef.current.isGameOver());
+    return true;
+  }, []);
 
   /**
    * Undo the last move
    * Reverts to previous position and updates state
    */
   const undo = useCallback(() => {
-    const undoMove = chess.undo();
+    const undoMove = gameRef.current.undo();
     if (undoMove) {
       updateGameState();
     }
-  }, [chess, updateGameState]);
+  }, [updateGameState]);
 
   /**
    * Reset the game to starting position
    * Clears all move history and resets state
    */
   const reset = useCallback(() => {
-    chess.reset();
+    gameRef.current.reset();
     updateGameState();
-  }, [chess, updateGameState]);
+  }, [updateGameState]);
 
   /**
    * Check if the game has ended
    * Returns true for checkmate, stalemate, or any draw condition
    */
   const isGameOver = useCallback((): boolean => {
-    return chess.isGameOver();
-  }, [chess]);
+    return gameRef.current.isGameOver();
+  }, []);
 
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo<UseChessReturn>(() => ({
@@ -146,7 +137,7 @@ export const useChess = (): UseChessReturn => {
     gameOver,
     gameResult,
     // Methods
-    onDrop,
+    onPieceDrop,
     undo,
     reset,
     isGameOver
@@ -157,7 +148,7 @@ export const useChess = (): UseChessReturn => {
     lastSan,
     gameOver,
     gameResult,
-    onDrop,
+    onPieceDrop,
     undo,
     reset,
     isGameOver

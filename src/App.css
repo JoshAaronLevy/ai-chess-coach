@@ -40,3 +40,13 @@
 .read-the-docs {
   color: #888;
 }
+
+.board-container {
+  display: flex !important;
+  justify-content: center !important;
+}
+
+#chessboard-board {
+  width: 50%;
+  height: 50%;
+}
