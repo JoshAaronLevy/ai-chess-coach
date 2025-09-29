@@ -1,5 +1,10 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Chess } from 'chess.js';
+import { useGameLog } from './useGameLog.js';
+import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from './serializers.js';
+import type { LegalMoveDetailed } from '../types/chess.js';
+import { hashPositionId } from '../utils/hash.js';
+import { postCoachGrade } from '../lib/coachApi';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -7,6 +12,41 @@ console.info('[USE_CHESS_INIT]');
  * Type for chess piece colors
  */
 type ChessColor = 'w' | 'b';
+
+/**
+ * Compute detailed legal moves with check detection
+ */
+function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
+  const verbose = game.moves({ verbose: true }) as Array<any>;
+  return verbose.map(m => {
+    const uci = (m.from && m.to) ? (m.from + m.to + (m.promotion ? m.promotion : '')) : null;
+
+    // compute givesCheck by applying on a clone
+    const clone = new Chess(game.fen());
+    clone.move({ from: m.from, to: m.to, promotion: m.promotion });
+    const givesCheck = clone.inCheck();
+
+    return {
+      san: m.san,
+      uci,
+      from: m.from,
+      to: m.to,
+      piece: m.piece,
+      color: m.color,
+      captured: m.captured ?? undefined,
+      promotion: m.promotion ?? undefined,
+      flags: m.flags,
+      givesCheck
+    };
+  });
+}
+
+/**
+ * Compute deterministic position ID from FEN and turn
+ */
+function computePositionId(fen: string, turn: 'w'|'b'): string {
+  return hashPositionId(`${fen}|${turn}`);
+}
 
 /**
  * Interface for the chess game state
@@ -38,6 +78,9 @@ export const useChess = (): UseChessReturn => {
   // Persistent chess.js instance using useRef
   const gameRef = useRef(new Chess());
   
+  // Initialize game log hook
+  const gameLog = useGameLog();
+  
   // Game state derived from gameRef.current
   const [fen, setFen] = useState<string>(gameRef.current.fen());
   const [turn, setTurn] = useState<ChessColor>(gameRef.current.turn());
@@ -45,6 +88,13 @@ export const useChess = (): UseChessReturn => {
   const [lastSan, setLastSan] = useState<string | undefined>(undefined);
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [gameResult, setGameResult] = useState<string | undefined>(undefined);
+
+  // Initialize game log on first mount if no current log exists
+  useEffect(() => {
+    if (gameLog.snapshots.length === 0) {
+      gameLog.startNew(gameRef.current.fen());
+    }
+  }, []); // Empty dependency array - only run on mount
 
   /**
    * Updates all state variables based on current chess.js instance
@@ -92,12 +142,98 @@ export const useChess = (): UseChessReturn => {
     const move = gameRef.current.move({ from, to, promotion: 'q' }); // promotion default is fine
     console.log('[DROP]', { from, to, move, fen: gameRef.current.fen() });
     if (move == null) return false;
+    
+    // Update UI state
     setFen(gameRef.current.fen());
     setLastSan(move.san);
     setHistorySan(gameRef.current.history());
     setGameOver(gameRef.current.isGameOver());
+    
+    // Record move in game log
+    gameLog.recordAfterMove(gameRef.current, move);
+    
+    // Comprehensive board state logging for LLM analysis
+    const currentPieces = boardToPieces(gameRef.current);
+    const materialCount = countMaterial(currentPieces);
+    
+    // Calculate captured pieces by comparing to starting position
+    const startingMaterial = {
+      white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
+      black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
+    };
+    const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
+    
+    // Convert move to comprehensive format
+    const moveInfo = toMoveInfo(move);
+    
+    const boardState = {
+      pieces: currentPieces,
+      fen: gameRef.current.fen(),
+      turn: gameRef.current.turn(),
+      moveNumber: gameRef.current.moveNumber(),
+      halfmoveClock: gameRef.current.fen().split(' ')[4], // Extract halfmove clock from FEN
+      fullmoveNumber: gameRef.current.fen().split(' ')[5], // Extract fullmove number from FEN
+      inCheck: gameRef.current.inCheck(),
+      gameOver: gameRef.current.isGameOver(),
+      checkmate: gameRef.current.isCheckmate(),
+      stalemate: gameRef.current.isStalemate(),
+      draw: gameRef.current.isDraw(),
+      threefoldRepetition: gameRef.current.isThreefoldRepetition(),
+      insufficientMaterial: gameRef.current.isInsufficientMaterial(),
+      positionId: computePositionId(gameRef.current.fen(), gameRef.current.turn()),
+      legalMovesDetailed: computeLegalMovesDetailed(gameRef.current)
+    };
+
+    const payload = {
+      boardState,
+      lastMove: {
+        san: moveInfo.san,
+        uci: moveInfo.uci,
+        from: moveInfo.from,
+        to: moveInfo.to,
+        piece: moveInfo.piece,
+        color: moveInfo.color,
+        captured: moveInfo.captured,
+        promotion: moveInfo.promotion,
+        flags: moveInfo.flags
+      },
+      materialCount,
+      capturedPieces,
+      moveHistory: {
+        san: gameRef.current.history(),
+        uci: gameRef.current.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+        totalMoves: gameRef.current.history().length,
+        currentPly: gameRef.current.history().length
+      },
+      gameAnalysis: {
+        legalMoves: gameRef.current.moves(),
+        legalMovesCount: gameRef.current.moves().length,
+        attackedSquares: gameRef.current.moves({ verbose: true }).map(m => m.to),
+        kingSquares: {
+          white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
+          black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
+        }
+      }
+    };
+
+    // Comprehensive board state logging for LLM analysis
+    console.log('Complete Chess Board State for LLM:', JSON.stringify(payload));
+
+    // Send board state to coach API for analysis
+    console.log('[COACH] API call takes flight with payload:', payload);
+    postCoachGrade(payload)
+      .then(resp => {
+        console.log('[COACH] API call completed successfully:', resp);
+      })
+      .catch(err => {
+        console.log('[COACH] API call completed with error:', err);
+      });
+    
+    // Compact debug logging
+    console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
+    
     return true;
-  }, []);
+  }, [gameLog]);
 
   /**
    * Undo the last move
@@ -107,8 +243,60 @@ export const useChess = (): UseChessReturn => {
     const undoMove = gameRef.current.undo();
     if (undoMove) {
       updateGameState();
+      gameLog.undoLast();
+      
+      // Enhanced board state logging after undo
+      const currentPieces = boardToPieces(gameRef.current);
+      const materialCount = countMaterial(currentPieces);
+      
+      const startingMaterial = {
+        white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
+        black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
+      };
+      const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
+      
+      const boardState = {
+        pieces: currentPieces,
+        fen: gameRef.current.fen(),
+        turn: gameRef.current.turn(),
+        moveNumber: gameRef.current.moveNumber(),
+        halfmoveClock: gameRef.current.fen().split(' ')[4],
+        fullmoveNumber: gameRef.current.fen().split(' ')[5],
+        inCheck: gameRef.current.inCheck(),
+        gameOver: gameRef.current.isGameOver(),
+        checkmate: gameRef.current.isCheckmate(),
+        stalemate: gameRef.current.isStalemate(),
+        draw: gameRef.current.isDraw(),
+        threefoldRepetition: gameRef.current.isThreefoldRepetition(),
+        insufficientMaterial: gameRef.current.isInsufficientMaterial(),
+        positionId: computePositionId(gameRef.current.fen(), gameRef.current.turn()),
+        legalMovesDetailed: computeLegalMovesDetailed(gameRef.current)
+      };
+
+      console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify({
+        boardState,
+        materialCount,
+        capturedPieces,
+        moveHistory: {
+          san: gameRef.current.history(),
+          uci: gameRef.current.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+          totalMoves: gameRef.current.history().length,
+          currentPly: gameRef.current.history().length
+        },
+        gameAnalysis: {
+          legalMoves: gameRef.current.moves(),
+          legalMovesCount: gameRef.current.moves().length,
+          attackedSquares: gameRef.current.moves({ verbose: true }).map(m => m.to),
+          kingSquares: {
+            white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
+            black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
+          }
+        }
+      }));
+
+      console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
     }
-  }, [updateGameState]);
+  }, [updateGameState, gameLog]);
 
   /**
    * Reset the game to starting position
@@ -117,7 +305,59 @@ export const useChess = (): UseChessReturn => {
   const reset = useCallback(() => {
     gameRef.current.reset();
     updateGameState();
-  }, [updateGameState]);
+    gameLog.resetAll(gameRef.current.fen());
+    
+    // Enhanced board state logging after reset
+    const currentPieces = boardToPieces(gameRef.current);
+    const materialCount = countMaterial(currentPieces);
+    
+    const startingMaterial = {
+      white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
+      black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
+    };
+    const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
+    
+    const boardState = {
+      pieces: currentPieces,
+      fen: gameRef.current.fen(),
+      turn: gameRef.current.turn(),
+      moveNumber: gameRef.current.moveNumber(),
+      halfmoveClock: gameRef.current.fen().split(' ')[4],
+      fullmoveNumber: gameRef.current.fen().split(' ')[5],
+      inCheck: gameRef.current.inCheck(),
+      gameOver: gameRef.current.isGameOver(),
+      checkmate: gameRef.current.isCheckmate(),
+      stalemate: gameRef.current.isStalemate(),
+      draw: gameRef.current.isDraw(),
+      threefoldRepetition: gameRef.current.isThreefoldRepetition(),
+      insufficientMaterial: gameRef.current.isInsufficientMaterial(),
+      positionId: computePositionId(gameRef.current.fen(), gameRef.current.turn()),
+      legalMovesDetailed: computeLegalMovesDetailed(gameRef.current)
+    };
+
+    console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify({
+      boardState,
+      materialCount,
+      capturedPieces,
+      moveHistory: {
+        san: gameRef.current.history(),
+        uci: gameRef.current.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+        totalMoves: gameRef.current.history().length,
+        currentPly: gameRef.current.history().length
+      },
+      gameAnalysis: {
+        legalMoves: gameRef.current.moves(),
+        legalMovesCount: gameRef.current.moves().length,
+        attackedSquares: gameRef.current.moves({ verbose: true }).map(m => m.to),
+        kingSquares: {
+          white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
+          black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
+        }
+      }
+    }));
+
+    console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
+  }, [updateGameState, gameLog]);
 
   /**
    * Check if the game has ended

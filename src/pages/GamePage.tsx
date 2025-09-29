@@ -1,8 +1,8 @@
-import React from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Button } from 'primereact/button';
 import { useChess } from '../chess/useChess';
 import { CoachPanel } from '../coach/CoachPanel';
+import { GameLogPanel } from '../app/components/GameLogPanel';
 import { MoveList } from '../app/components/MoveList';
 import '../App.css';
 
@@ -50,7 +50,7 @@ export function GamePage() {
 
       {/* Right Column - Sidebar */}
       <div className="col-12 lg:col-3">
-        <div className="flex flex-column gap-3 p-3">
+        <div className="flex flex-column gap-3 p-3 overflow-auto" style={{ maxHeight: '100vh' }}>
           {/* Control Buttons */}
           <div className="flex flex-column gap-2">
             <Button
@@ -77,6 +77,9 @@ export function GamePage() {
             gameOver={gameOver}
             gameResult={gameResult}
           />
+
+          {/* Game Log Panel */}
+          <GameLogPanel />
 
           {/* Move List */}
           <MoveList history={historySan} />
