@@ -7,7 +7,6 @@ import { MoveList } from '../app/components/MoveList';
 import '../App.css';
 
 export function GamePage() {
-  console.info('[GAME_PAGE_ACTIVE] rendering');
   const { fen, turn, historySan, lastSan, gameOver, gameResult, onPieceDrop, undo, reset } = useChess();
 
   // Adapter function to match react-chessboard signature

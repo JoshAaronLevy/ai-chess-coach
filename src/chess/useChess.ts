@@ -5,6 +5,7 @@ import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from '
 import type { LegalMoveDetailed } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
+import { parseDifyAnswer } from '../utils/difyParser';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -223,10 +224,20 @@ export const useChess = (): UseChessReturn => {
     console.log('[COACH] API call takes flight with payload:', payload);
     postCoachGrade(payload)
       .then(resp => {
-        console.log('[COACH] API call completed successfully:', resp);
+        // Keep existing log exactly as is
+        console.log('[COACH] API call completed successfully:', JSON.stringify(resp));
+        
+        // Add new parsing and logging
+        const insights = parseDifyAnswer(resp);
+        console.log('[AI Tutor Insights]', JSON.stringify(insights));
       })
       .catch(err => {
-        console.log('[COACH] API call completed with error:', err);
+        // Keep existing error log
+        console.log('[COACH] API call completed with error:', JSON.stringify(err));
+        
+        // Optionally add insights parsing for error responses if they contain answer data
+        const insights = parseDifyAnswer(err);
+        console.log('[AI Tutor Insights]', insights);
       });
     
     // Compact debug logging
