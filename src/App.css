@@ -50,3 +50,141 @@
   width: 50%;
   height: 50%;
 }
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus indicators for better accessibility */
+.p-button:focus,
+.p-accordion-header:focus,
+.p-dialog:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+/* Enhanced focus for keyboard navigation */
+.p-button:focus-visible {
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.5);
+}
+
+/* Responsive improvements */
+@media (max-width: 767px) {
+  .board-container {
+    max-width: 100% !important;
+    margin: 0 auto;
+  }
+  
+  #chessboard-board {
+    width: 90% !important;
+    height: 90% !important;
+  }
+  
+  .grid .col-12 {
+    padding: 0.5rem !important;
+  }
+  
+  /* Coach panel responsive adjustments */
+  .coach-panel-content {
+    font-size: 0.9rem;
+  }
+  
+  /* Touch-friendly button sizes */
+  .p-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .board-container {
+    max-width: 80%;
+  }
+  
+  #chessboard-board {
+    width: 70%;
+    height: 70%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .board-container {
+    max-width: 35rem;
+  }
+}
+
+/* Toast accessibility improvements */
+.coach-analysis-toast {
+  border-left: 4px solid #007bff;
+}
+
+.coach-analysis-toast .p-toast-message-icon {
+  color: #007bff;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .p-tag {
+    border: 2px solid currentColor;
+  }
+  
+  .p-progressbar-value {
+    border: 1px solid currentColor;
+  }
+}
+
+/* Ensure grade colors have sufficient contrast */
+.p-tag.p-tag-success {
+  background-color: #28a745;
+  color: white;
+}
+
+.p-tag.p-tag-info {
+  background-color: #007bff;
+  color: white;
+}
+
+.p-tag.p-tag-warning {
+  background-color: #fd7e14;
+  color: white;
+}
+
+.p-tag.p-tag-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+/* Hint modal responsive improvements */
+@media (max-width: 767px) {
+  .hint-modal .p-dialog {
+    width: 95vw !important;
+    margin: 0.5rem;
+  }
+  
+  .hint-modal .p-dialog-content {
+    padding: 1rem !important;
+  }
+}
+
+/* Loading spinner accessibility */
+.p-progress-spinner-circle {
+  stroke: currentColor;
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

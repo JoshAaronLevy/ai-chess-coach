@@ -5,7 +5,7 @@ import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from '
 import type { LegalMoveDetailed } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
-import { parseDifyAnswer } from '../utils/difyParser';
+import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -69,6 +69,14 @@ interface UseChessReturn extends ChessGameState {
   undo: () => void;
   reset: () => void;
   isGameOver: () => boolean;
+  // Coach insights state
+  insights: TutorInsights | null;
+  hasNewInsights: boolean;
+  isLoadingInsights: boolean;
+  insightsError: string | null;
+  // Coach insights actions
+  markInsightsAsViewed: () => void;
+  clearInsights: () => void;
 }
 
 /**
@@ -89,6 +97,12 @@ export const useChess = (): UseChessReturn => {
   const [lastSan, setLastSan] = useState<string | undefined>(undefined);
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [gameResult, setGameResult] = useState<string | undefined>(undefined);
+
+  // Coach insights state
+  const [insights, setInsights] = useState<TutorInsights | null>(null);
+  const [hasNewInsights, setHasNewInsights] = useState<boolean>(false);
+  const [isLoadingInsights, setIsLoadingInsights] = useState<boolean>(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   // Initialize game log on first mount if no current log exists
   useEffect(() => {
@@ -222,22 +236,44 @@ export const useChess = (): UseChessReturn => {
 
     // Send board state to coach API for analysis
     console.log('[COACH] API call takes flight with payload:', payload);
+    setIsLoadingInsights(true);
+    setInsightsError(null);
+    
     postCoachGrade(payload)
       .then(resp => {
         // Keep existing log exactly as is
         console.log('[COACH] API call completed successfully:', JSON.stringify(resp));
         
-        // Add new parsing and logging
-        const insights = parseDifyAnswer(resp);
-        console.log('[AI Tutor Insights]', JSON.stringify(insights));
+        // Parse and store insights in state
+        const parsedInsights = parseDifyAnswer(resp);
+        console.log('[AI Tutor Insights]', JSON.stringify(parsedInsights));
+        
+        if (parsedInsights) {
+          setInsights(parsedInsights);
+          setHasNewInsights(true);
+          setInsightsError(null);
+        } else {
+          setInsightsError('Failed to parse coach response');
+        }
       })
       .catch(err => {
         // Keep existing error log
         console.log('[COACH] API call completed with error:', JSON.stringify(err));
         
-        // Optionally add insights parsing for error responses if they contain answer data
-        const insights = parseDifyAnswer(err);
-        console.log('[AI Tutor Insights]', insights);
+        // Try to parse insights from error response
+        const parsedInsights = parseDifyAnswer(err);
+        console.log('[AI Tutor Insights]', parsedInsights);
+        
+        if (parsedInsights) {
+          setInsights(parsedInsights);
+          setHasNewInsights(true);
+          setInsightsError(null);
+        } else {
+          setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
+        }
+      })
+      .finally(() => {
+        setIsLoadingInsights(false);
       });
     
     // Compact debug logging
@@ -317,6 +353,7 @@ export const useChess = (): UseChessReturn => {
     gameRef.current.reset();
     updateGameState();
     gameLog.resetAll(gameRef.current.fen());
+    clearInsights(); // Clear insights when starting a new game
     
     // Enhanced board state logging after reset
     const currentPieces = boardToPieces(gameRef.current);
@@ -378,6 +415,23 @@ export const useChess = (): UseChessReturn => {
     return gameRef.current.isGameOver();
   }, []);
 
+  /**
+   * Mark insights as viewed, clearing the "new insights" flag
+   */
+  const markInsightsAsViewed = useCallback(() => {
+    setHasNewInsights(false);
+  }, []);
+
+  /**
+   * Clear insights state (for new games)
+   */
+  const clearInsights = useCallback(() => {
+    setInsights(null);
+    setHasNewInsights(false);
+    setIsLoadingInsights(false);
+    setInsightsError(null);
+  }, []);
+
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo<UseChessReturn>(() => ({
     // State
@@ -387,11 +441,19 @@ export const useChess = (): UseChessReturn => {
     lastSan,
     gameOver,
     gameResult,
+    // Coach insights state
+    insights,
+    hasNewInsights,
+    isLoadingInsights,
+    insightsError,
     // Methods
     onPieceDrop,
     undo,
     reset,
-    isGameOver
+    isGameOver,
+    // Coach insights actions
+    markInsightsAsViewed,
+    clearInsights
   }), [
     fen,
     turn,
@@ -399,10 +461,16 @@ export const useChess = (): UseChessReturn => {
     lastSan,
     gameOver,
     gameResult,
+    insights,
+    hasNewInsights,
+    isLoadingInsights,
+    insightsError,
     onPieceDrop,
     undo,
     reset,
-    isGameOver
+    isGameOver,
+    markInsightsAsViewed,
+    clearInsights
   ]);
 
   return returnValue;
