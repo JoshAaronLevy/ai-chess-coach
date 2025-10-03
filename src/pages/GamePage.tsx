@@ -2,9 +2,12 @@ import { Chessboard } from 'react-chessboard';
 import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
 import { useChess } from '../chess/useChess';
-import { CoachPanel } from '../coach/CoachPanel';
-import { GameLogPanel } from '../app/components/GameLogPanel';
-import { MoveList } from '../app/components/MoveList';
+import { useSectionModals } from '../hooks/useSectionModals';
+import { SectionButtons } from '../app/components/SectionButtons';
+import { SectionModal } from '../app/components/modals/SectionModal';
+import { CoachModalContent } from '../app/components/modals/CoachModalContent';
+import { GameLogModalContent } from '../app/components/modals/GameLogModalContent';
+import { MoveListModalContent } from '../app/components/modals/MoveListModalContent';
 import '../App.css';
 import { useRef, useEffect } from 'react';
 
@@ -24,6 +27,9 @@ export function GamePage() {
     isLoadingInsights,
     markInsightsAsViewed
   } = useChess();
+
+  // Modal state management
+  const { openModal, closeModal, isModalOpen } = useSectionModals();
 
   // Toast reference for showing notifications
   const toast = useRef<Toast>(null);
@@ -124,24 +130,59 @@ export function GamePage() {
             />
           </div>
 
-          {/* Coach Panel */}
-          <CoachPanel
-            lastSan={lastSan}
-            gameOver={gameOver}
-            gameResult={gameResult}
-            insights={insights}
+          {/* Section Buttons */}
+          <SectionButtons
+            onOpenCoach={() => openModal('coach')}
+            onOpenGameLog={() => openModal('gamelog')}
+            onOpenMoveList={() => openModal('movelist')}
             hasNewInsights={hasNewInsights}
-            isLoadingInsights={isLoadingInsights}
-            onMarkInsightsViewed={markInsightsAsViewed}
+            moveCount={historySan.length}
           />
-
-          {/* Game Log Panel */}
-          <GameLogPanel />
-
-          {/* Move List */}
-          <MoveList history={historySan} />
         </div>
       </div>
+
+      {/* Section Modals */}
+      
+      {/* Coach Panel Modal */}
+      <SectionModal
+        visible={isModalOpen('coach')}
+        onHide={closeModal}
+        sectionType="coach"
+        title="Coach Panel"
+        size="large"
+      >
+        <CoachModalContent
+          lastSan={lastSan}
+          gameOver={gameOver}
+          gameResult={gameResult}
+          insights={insights}
+          hasNewInsights={hasNewInsights}
+          isLoadingInsights={isLoadingInsights}
+          onMarkInsightsViewed={markInsightsAsViewed}
+        />
+      </SectionModal>
+
+      {/* Game Log Modal */}
+      <SectionModal
+        visible={isModalOpen('gamelog')}
+        onHide={closeModal}
+        sectionType="gamelog"
+        title="Game Log Debug"
+        size="medium"
+      >
+        <GameLogModalContent />
+      </SectionModal>
+
+      {/* Move List Modal */}
+      <SectionModal
+        visible={isModalOpen('movelist')}
+        onHide={closeModal}
+        sectionType="movelist"
+        title="Move List"
+        size="small"
+      >
+        <MoveListModalContent history={historySan} />
+      </SectionModal>
     </div>
   );
 }
