@@ -1,5 +1,7 @@
 import { Chessboard } from 'react-chessboard';
+import type { PieceDropHandlerArgs, SquareHandlerArgs, PieceHandlerArgs } from 'react-chessboard';
 import { Button } from 'primereact/button';
+import { ToggleButton } from 'primereact/togglebutton';
 import { Toast } from 'primereact/toast';
 import { useChess } from '../chess/useChess';
 import { useSectionModals } from '../hooks/useSectionModals';
@@ -9,7 +11,7 @@ import { CoachModalContent } from '../app/components/modals/CoachModalContent';
 import { GameLogModalContent } from '../app/components/modals/GameLogModalContent';
 import { MoveListModalContent } from '../app/components/modals/MoveListModalContent';
 import '../App.css';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 
 export function GamePage() {
   const {
@@ -25,7 +27,11 @@ export function GamePage() {
     insights,
     hasNewInsights,
     isLoadingInsights,
-    markInsightsAsViewed
+    markInsightsAsViewed,
+    // AI state and functions
+    isAiMode,
+    isAiThinking,
+    toggleAiMode
   } = useChess();
 
   // Modal state management
@@ -55,10 +61,36 @@ export function GamePage() {
   }, [hasNewInsights, insights]);
 
   // Adapter function to match react-chessboard signature
-  const handlePieceDrop = ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
-    if (targetSquare === null) return false;
-    return onPieceDrop(sourceSquare, targetSquare);
+  const handlePieceDrop = ({ piece, sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean => {
+    console.log('[HANDLE_PIECE_DROP] Called with:', { piece, sourceSquare, targetSquare });
+    if (targetSquare === null) {
+      console.log('[HANDLE_PIECE_DROP] Rejected: targetSquare is null');
+      return false;
+    }
+    console.log('[HANDLE_PIECE_DROP] Calling onPieceDrop:', { sourceSquare, targetSquare });
+    const result = onPieceDrop(sourceSquare, targetSquare);
+    console.log('[HANDLE_PIECE_DROP] Result:', result);
+    return result;
   };
+
+  // Calculate whether pieces can be dragged based on game state and AI mode
+  const canDragPiece = useMemo(() => {
+    return ({ isSparePiece, piece, square }: PieceHandlerArgs): boolean => {
+      const result = !(gameOver || isAiThinking || (isAiMode && turn === 'b'));
+      console.log('[CAN_DRAG_PIECE] Calculated for piece:', {
+        piece: piece.pieceType,
+        square,
+        isSparePiece,
+        result,
+        gameOver,
+        isAiThinking,
+        isAiMode,
+        turn,
+        condition: `!(${gameOver} || ${isAiThinking} || (${isAiMode} && ${turn === 'b'}))`
+      });
+      return result;
+    };
+  }, [gameOver, isAiThinking, isAiMode, turn]);
 
   return (
     <div className="grid" role="main" aria-label="Chess game interface">
@@ -76,17 +108,42 @@ export function GamePage() {
       {/* Left Column - Chessboard */}
       <div className="col-12 lg:col-9">
         <div className="flex flex-column align-items-center gap-4 p-3">
-          {/* Current Turn / Game Status */}
-          <div className="text-center">
-            {gameOver ? (
-              <div className="text-2xl font-bold text-red-600">
-                {gameResult}
-              </div>
-            ) : (
-              <div className="text-xl font-semibold text-primary">
-                {turn === 'w' ? 'White to move' : 'Black to move'}
-              </div>
-            )}
+          {/* AI Mode Toggle */}
+          <div className="mb-3">
+            <ToggleButton
+              checked={isAiMode}
+              onChange={toggleAiMode}
+              onLabel="🤖 Play vs AI: ON"
+              offLabel="🤖 Play vs AI: OFF"
+              onIcon="pi pi-check"
+              offIcon="pi pi-times"
+              className={`w-full ${isAiMode ? 'p-button-info' : ''}`}
+              disabled={historySan.length > 0}
+              tooltip={historySan.length > 0 ? "Cannot change AI mode after game starts" : "Enable AI opponent (plays Black)"}
+            />
+          </div>
+
+          {/* Enhanced turn display with AI thinking indicator */}
+          <div className="mb-3">
+            <div className="text-center">
+              {gameOver ? (
+                <div className="text-2xl font-bold text-red-600">
+                  {gameResult}
+                </div>
+              ) : isAiThinking ? (
+                <div className="flex align-items-center justify-content-center gap-2">
+                  <i className="pi pi-spin pi-spinner"></i>
+                  <span className="text-xl font-semibold text-orange-500">AI is thinking...</span>
+                </div>
+              ) : (
+                <div className="text-xl font-semibold text-primary">
+                  <strong>Turn:</strong> {turn === 'w' ? 'White' : 'Black'}
+                  {isAiMode && turn === 'b' && !gameOver && (
+                    <span className="ml-2 text-blue-500">(AI)</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           
           {/* Chessboard Container */}
@@ -96,7 +153,13 @@ export function GamePage() {
                 id: "ChessGame",
                 position: fen,
                 onPieceDrop: handlePieceDrop,
-                allowDragging: !gameOver
+                canDragPiece: canDragPiece,
+                onSquareClick: ({ piece, square }: SquareHandlerArgs) => {
+                  console.log('[SQUARE_CLICK] Square clicked:', { piece, square });
+                },
+                onPieceClick: ({ isSparePiece, piece, square }: PieceHandlerArgs) => {
+                  console.log('[PIECE_CLICK] Piece clicked:', { piece: piece.pieceType, square, isSparePiece });
+                }
               }}
             />
           </div>
@@ -112,7 +175,7 @@ export function GamePage() {
               label="Undo Move"
               icon="pi pi-undo"
               onClick={undo}
-              disabled={historySan.length === 0}
+              disabled={historySan.length === 0 || isAiThinking}
               className="w-full"
               severity="secondary"
               aria-label="Undo the last move"
@@ -122,7 +185,7 @@ export function GamePage() {
               label="New Game"
               icon="pi pi-refresh"
               onClick={reset}
-              disabled={historySan.length === 0 && !gameOver}
+              disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
               className="w-full"
               severity="info"
               aria-label="Start a new chess game"

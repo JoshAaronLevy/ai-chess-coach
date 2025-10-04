@@ -2,10 +2,11 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import { useGameLog } from './useGameLog.js';
 import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from './serializers.js';
-import type { LegalMoveDetailed } from '../types/chess.js';
+import type { LegalMoveDetailed, PieceType } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
+import { applyUciMove } from '../utils/uciUtils.js';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -18,7 +19,16 @@ type ChessColor = 'w' | 'b';
  * Compute detailed legal moves with check detection
  */
 function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
-  const verbose = game.moves({ verbose: true }) as Array<any>;
+  const verbose = game.moves({ verbose: true }) as Array<{
+    san: string;
+    from: string;
+    to: string;
+    piece: string;
+    color: string;
+    captured?: string;
+    promotion?: string;
+    flags: string;
+  }>;
   return verbose.map(m => {
     const uci = (m.from && m.to) ? (m.from + m.to + (m.promotion ? m.promotion : '')) : null;
 
@@ -32,10 +42,10 @@ function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
       uci,
       from: m.from,
       to: m.to,
-      piece: m.piece,
-      color: m.color,
-      captured: m.captured ?? undefined,
-      promotion: m.promotion ?? undefined,
+      piece: m.piece as PieceType,
+      color: m.color as ChessColor,
+      captured: m.captured ? (m.captured as PieceType) : undefined,
+      promotion: m.promotion ? (m.promotion as PieceType) : undefined,
       flags: m.flags,
       givesCheck
     };
@@ -59,6 +69,11 @@ interface ChessGameState {
   lastSan?: string;
   gameOver: boolean;
   gameResult?: string;
+  // AI game mode state
+  isAiMode: boolean;
+  isAiThinking: boolean;
+  aiColor: 'b';
+  pendingAiMove: string | null;
 }
 
 /**
@@ -77,6 +92,12 @@ interface UseChessReturn extends ChessGameState {
   // Coach insights actions
   markInsightsAsViewed: () => void;
   clearInsights: () => void;
+  // AI game mode actions
+  toggleAiMode: () => void;
+  setAiThinking: (thinking: boolean) => void;
+  isAiTurn: () => boolean;
+  handleAiMoveResponse: (bestMove: { uci: string, san: string }) => void;
+  executeAiMove: (uciMove: string) => void;
 }
 
 /**
@@ -103,6 +124,13 @@ export const useChess = (): UseChessReturn => {
   const [hasNewInsights, setHasNewInsights] = useState<boolean>(false);
   const [isLoadingInsights, setIsLoadingInsights] = useState<boolean>(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  // AI game mode state
+  const [isAiMode, setIsAiMode] = useState<boolean>(false);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const [pendingAiMove, setPendingAiMove] = useState<string | null>(null);
+  const [aiMoveTimeout, setAiMoveTimeout] = useState<number | null>(null);
+  const aiColor = 'b' as const; // AI always plays black
 
   // Initialize game log on first mount if no current log exists
   useEffect(() => {
@@ -239,6 +267,11 @@ export const useChess = (): UseChessReturn => {
     setIsLoadingInsights(true);
     setInsightsError(null);
     
+    // Set AI thinking state before API call when in AI mode
+    if (isAiMode && gameRef.current.turn() === aiColor) {
+      setIsAiThinking(true);
+    }
+    
     postCoachGrade(payload)
       .then(resp => {
         // Keep existing log exactly as is
@@ -252,6 +285,34 @@ export const useChess = (): UseChessReturn => {
           setInsights(parsedInsights);
           setHasNewInsights(true);
           setInsightsError(null);
+          
+          // Enhanced AI move validation and side checking
+          if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
+            const bestMove = parsedInsights.bestMove?.uci;
+            if (bestMove) {
+              // Validate that the move is for the correct side
+              const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
+              if (expectedSide !== aiColor) {
+                console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
+                setIsAiThinking(false);
+                return;
+              }
+              
+              // Double-check game state before proceeding
+              if (gameRef.current.isGameOver()) {
+                console.log('[AI] Game ended before AI could move');
+                setIsAiThinking(false);
+                return;
+              }
+              
+              if (parsedInsights.bestMove) {
+                handleAiMoveResponse(parsedInsights.bestMove);
+              }
+            } else {
+              console.warn('[AI] AI mode enabled but no bestMove found in API response');
+              setIsAiThinking(false);
+            }
+          }
         } else {
           setInsightsError('Failed to parse coach response');
         }
@@ -268,8 +329,48 @@ export const useChess = (): UseChessReturn => {
           setInsights(parsedInsights);
           setHasNewInsights(true);
           setInsightsError(null);
+          
+          // Enhanced AI move validation and side checking
+          if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
+            const bestMove = parsedInsights.bestMove?.uci;
+            if (bestMove) {
+              // Validate that the move is for the correct side
+              const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
+              if (expectedSide !== aiColor) {
+                console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
+                setIsAiThinking(false);
+                return;
+              }
+              
+              // Double-check game state before proceeding
+              if (gameRef.current.isGameOver()) {
+                console.log('[AI] Game ended before AI could move');
+                setIsAiThinking(false);
+                return;
+              }
+              
+              if (parsedInsights.bestMove) {
+                handleAiMoveResponse(parsedInsights.bestMove);
+              }
+            } else {
+              console.warn('[AI] AI mode enabled but no bestMove found in API response');
+              setIsAiThinking(false);
+            }
+          }
         } else {
           setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
+          // Enhanced AI-specific error cleanup
+          if (isAiMode) {
+            console.log('[AI] Clearing AI state due to API error');
+            setIsAiThinking(false);
+            setPendingAiMove(null);
+            
+            // Clear any pending timeouts
+            if (aiMoveTimeout) {
+              clearTimeout(aiMoveTimeout);
+              setAiMoveTimeout(null);
+            }
+          }
         }
       })
       .finally(() => {
@@ -280,7 +381,7 @@ export const useChess = (): UseChessReturn => {
     console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
     
     return true;
-  }, [gameLog]);
+  }, [gameLog, isAiMode]);
 
   /**
    * Undo the last move
@@ -354,6 +455,19 @@ export const useChess = (): UseChessReturn => {
     updateGameState();
     gameLog.resetAll(gameRef.current.fen());
     clearInsights(); // Clear insights when starting a new game
+    
+    // Comprehensive AI state cleanup
+    setIsAiThinking(false);
+    setPendingAiMove(null);
+    
+    // Clear any pending timeouts
+    if (aiMoveTimeout) {
+      clearTimeout(aiMoveTimeout);
+      setAiMoveTimeout(null);
+    }
+    
+    console.log('[AI] AI state cleared during game reset');
+    // Note: Don't reset isAiMode so user's preference persists
     
     // Enhanced board state logging after reset
     const currentPieces = boardToPieces(gameRef.current);
@@ -432,6 +546,157 @@ export const useChess = (): UseChessReturn => {
     setInsightsError(null);
   }, []);
 
+  /**
+   * Toggle AI mode on/off (only allowed when no moves have been made)
+   */
+  const toggleAiMode = useCallback(() => {
+    // Enhanced validation
+    if (historySan.length === 0) {
+      // Clear any pending AI state when toggling
+      if (isAiThinking) {
+        console.log('[AI] Clearing AI thinking state during mode toggle');
+        setIsAiThinking(false);
+        setPendingAiMove(null);
+        
+        // Clear any pending timeouts
+        if (aiMoveTimeout) {
+          clearTimeout(aiMoveTimeout);
+          setAiMoveTimeout(null);
+        }
+      }
+      
+      setIsAiMode(prev => {
+        const newMode = !prev;
+        console.log('[AI] Mode toggled:', newMode ? 'ON' : 'OFF');
+        return newMode;
+      });
+    } else {
+      console.warn('[AI] Cannot change AI mode after game has started');
+    }
+  }, [historySan.length, isAiThinking, aiMoveTimeout]);
+
+  /**
+   * Set AI thinking state
+   */
+  const setAiThinking = useCallback((thinking: boolean) => {
+    setIsAiThinking(thinking);
+  }, []);
+
+  /**
+   * Check if it's the AI's turn to move
+   */
+  const isAiTurn = useCallback(() => {
+    return isAiMode && turn === aiColor && !gameOver;
+  }, [isAiMode, turn, aiColor, gameOver]);
+
+  /**
+   * Handle AI move response with natural delay and timeout protection
+   */
+  const handleAiMoveResponse = useCallback((bestMove: { uci: string, san: string }) => {
+    if (!isAiMode || gameRef.current.isGameOver()) {
+      return;
+    }
+
+    console.log('[AI] Processing move response:', bestMove);
+    setIsAiThinking(true);
+    setPendingAiMove(bestMove.uci);
+    
+    // Add timeout handling
+    const timeoutId = setTimeout(() => {
+      console.warn('[AI] AI move execution timed out');
+      setIsAiThinking(false);
+      setPendingAiMove(null);
+    }, 10000); // 10 second timeout
+
+    setAiMoveTimeout(timeoutId);
+    
+    // Natural delay: 1-2 seconds
+    const delay = 1000 + Math.random() * 1000;
+    setTimeout(() => {
+      executeAiMove(bestMove.uci);
+    }, delay);
+  }, [isAiMode]);
+
+  /**
+   * Execute AI move and update game state with race condition protection
+   */
+  const executeAiMove = useCallback((uciMove: string) => {
+    // Prevent multiple simultaneous AI moves
+    if (isAiThinking && pendingAiMove) {
+      console.warn('[AI] AI move already in progress, ignoring duplicate request');
+      return false;
+    }
+
+    // Validate game state hasn't changed
+    if (!gameRef.current || gameRef.current.isGameOver()) {
+      console.warn('[AI] Cannot execute AI move: game ended or invalid state');
+      setIsAiThinking(false);
+      return false;
+    }
+
+    // Validate it's still AI's turn
+    if (gameRef.current.turn() !== aiColor) {
+      console.warn('[AI] Cannot execute AI move: not AI\'s turn');
+      setIsAiThinking(false);
+      return false;
+    }
+
+    try {
+      console.log('[AI] Attempting to execute move:', uciMove);
+
+      const moveResult = applyUciMove(gameRef.current, uciMove);
+      if (!moveResult) {
+        console.error('[AI] Invalid UCI move:', uciMove);
+        setIsAiThinking(false);
+        setPendingAiMove(null);
+        return false;
+      }
+      
+      console.log('[AI] Move executed successfully:', { uci: uciMove, san: moveResult.san });
+      
+      // Update game state
+      updateGameState();
+      gameLog.recordAfterMove(gameRef.current, moveResult);
+      
+      // Clear timeout if it exists
+      if (aiMoveTimeout) {
+        clearTimeout(aiMoveTimeout);
+        setAiMoveTimeout(null);
+      }
+      
+      // Clear AI state
+      setIsAiThinking(false);
+      setPendingAiMove(null);
+      
+      // Enhanced game over detection after AI move
+      if (gameRef.current.isGameOver()) {
+        console.log('[AI] Game ended after AI move:', {
+          isCheckmate: gameRef.current.isCheckmate(),
+          isStalemate: gameRef.current.isStalemate(),
+          isDraw: gameRef.current.isDraw(),
+          isThreefoldRepetition: gameRef.current.isThreefoldRepetition(),
+          isInsufficientMaterial: gameRef.current.isInsufficientMaterial()
+        });
+        // No further AI processing needed
+        return true;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[AI] Move execution failed:', error);
+      setIsAiThinking(false);
+      setPendingAiMove(null);
+      
+      // Clear timeout on error
+      if (aiMoveTimeout) {
+        clearTimeout(aiMoveTimeout);
+        setAiMoveTimeout(null);
+      }
+      
+      return false;
+    }
+  }, [updateGameState, gameLog, isAiThinking, pendingAiMove, aiColor, aiMoveTimeout]);
+
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo<UseChessReturn>(() => ({
     // State
@@ -441,6 +706,11 @@ export const useChess = (): UseChessReturn => {
     lastSan,
     gameOver,
     gameResult,
+    // AI game mode state
+    isAiMode,
+    isAiThinking,
+    aiColor,
+    pendingAiMove,
     // Coach insights state
     insights,
     hasNewInsights,
@@ -453,7 +723,13 @@ export const useChess = (): UseChessReturn => {
     isGameOver,
     // Coach insights actions
     markInsightsAsViewed,
-    clearInsights
+    clearInsights,
+    // AI game mode actions
+    toggleAiMode,
+    setAiThinking,
+    isAiTurn,
+    handleAiMoveResponse,
+    executeAiMove
   }), [
     fen,
     turn,
@@ -461,6 +737,10 @@ export const useChess = (): UseChessReturn => {
     lastSan,
     gameOver,
     gameResult,
+    isAiMode,
+    isAiThinking,
+    aiColor,
+    pendingAiMove,
     insights,
     hasNewInsights,
     isLoadingInsights,
@@ -470,7 +750,12 @@ export const useChess = (): UseChessReturn => {
     reset,
     isGameOver,
     markInsightsAsViewed,
-    clearInsights
+    clearInsights,
+    toggleAiMode,
+    setAiThinking,
+    isAiTurn,
+    handleAiMoveResponse,
+    executeAiMove
   ]);
 
   return returnValue;
