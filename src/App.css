@@ -1,5 +1,6 @@
 #root {
-  max-width: 1280px;
+  max-width: 1500px;
+  width: 80%;
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
@@ -187,4 +188,20 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.p-menubar {
+  justify-content: space-between !important;
+}
+
+.flex-content-centered {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100%;
+  height: 100%;
+}
+
+.mr-10 {
+  margin-right: 10px;
 }

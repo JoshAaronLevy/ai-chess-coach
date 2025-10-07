@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-export type SectionType = 'coach' | 'gamelog' | 'movelist' | null;
+export type SectionType = 'coach' | 'gamelog' | 'movelist' | 'info' | null;
 
 export interface UseSectionModalsReturn {
   activeModal: SectionType;

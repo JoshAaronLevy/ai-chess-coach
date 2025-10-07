@@ -186,11 +186,17 @@ export const useChess = (): UseChessReturn => {
     console.log('[DROP]', { from, to, move, fen: gameRef.current.fen() });
     if (move == null) return false;
     
-    // Update UI state
+    // DEBUG: Log turn state before move
+    console.log('[TURN_DEBUG] Before move - Chess.js turn:', gameRef.current.turn(), 'React turn state:', turn);
+    
+    // Update UI state (but NOT turn yet - wait for API completion)
     setFen(gameRef.current.fen());
     setLastSan(move.san);
     setHistorySan(gameRef.current.history());
     setGameOver(gameRef.current.isGameOver());
+    
+    // DEBUG: Turn will be updated after API call completes
+    console.log('[TURN_DEBUG] Move applied, waiting for API completion to update turn display');
     
     // Record move in game log
     gameLog.recordAfterMove(gameRef.current, move);
@@ -286,6 +292,10 @@ export const useChess = (): UseChessReturn => {
           setHasNewInsights(true);
           setInsightsError(null);
           
+          // Update turn state now that API call completed successfully
+          setTurn(gameRef.current.turn());
+          console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', gameRef.current.turn());
+          
           // Enhanced AI move validation and side checking
           if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
             const bestMove = parsedInsights.bestMove?.uci;
@@ -330,6 +340,10 @@ export const useChess = (): UseChessReturn => {
           setHasNewInsights(true);
           setInsightsError(null);
           
+          // Update turn state even if parsed from error response
+          setTurn(gameRef.current.turn());
+          console.log('[TURN_DEBUG] API call failed but insights parsed - Turn updated to:', gameRef.current.turn());
+          
           // Enhanced AI move validation and side checking
           if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
             const bestMove = parsedInsights.bestMove?.uci;
@@ -359,6 +373,11 @@ export const useChess = (): UseChessReturn => {
           }
         } else {
           setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
+          
+          // Update turn state even on complete API failure
+          setTurn(gameRef.current.turn());
+          console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', gameRef.current.turn());
+          
           // Enhanced AI-specific error cleanup
           if (isAiMode) {
             console.log('[AI] Clearing AI state due to API error');

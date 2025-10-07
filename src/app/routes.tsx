@@ -1,6 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { AppShell } from './AppShell';
-import { HomePage } from '../pages/HomePage';
 import { GamePage } from '../pages/GamePage';
 
 export const routes = [
@@ -10,10 +9,6 @@ export const routes = [
     children: [
       {
         index: true,
-        element: <HomePage />
-      },
-      {
-        path: 'play',
         element: <GamePage />
       }
     ]

@@ -1,23 +1,20 @@
-import { useRef } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { Menubar } from 'primereact/menubar';
 import { Toast } from 'primereact/toast';
 import type { MenuItem } from 'primereact/menuitem';
+import { SectionModal } from './components/modals/SectionModal';
+import { InfoModalContent } from './components/modals/InfoModalContent';
 
 export function AppShell() {
   const toast = useRef<Toast>(null);
-  const navigate = useNavigate();
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const menuItems: MenuItem[] = [
     {
-      label: 'Home',
-      icon: 'pi pi-home',
-      command: () => navigate('/')
-    },
-    {
-      label: 'Play',
-      icon: 'pi pi-play',
-      command: () => navigate('/play')
+      label: 'Info',
+      icon: 'pi pi-info-circle',
+      command: () => setShowInfoModal(true)
     }
   ];
 
@@ -30,15 +27,26 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen">
-      <Menubar 
-        model={menuItems} 
+      <Menubar
+        model={menuItems}
         start={start}
-        className="border-none border-round-0"
+        className="border-none border-round-0 space-between"
       />
       <Toast ref={toast} />
       <main className="p-4">
         <Outlet />
       </main>
+
+      {/* Info Modal */}
+      <SectionModal
+        visible={showInfoModal}
+        onHide={() => setShowInfoModal(false)}
+        sectionType="info"
+        title="About AI Chess Coach"
+        size="large"
+      >
+        <InfoModalContent />
+      </SectionModal>
     </div>
   );
 }

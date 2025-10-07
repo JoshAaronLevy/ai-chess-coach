@@ -76,7 +76,7 @@ export function GamePage() {
   // Calculate whether pieces can be dragged based on game state and AI mode
   const canDragPiece = useMemo(() => {
     return ({ isSparePiece, piece, square }: PieceHandlerArgs): boolean => {
-      const result = !(gameOver || isAiThinking || (isAiMode && turn === 'b'));
+      const result = !(gameOver || isAiThinking || isLoadingInsights || (isAiMode && turn === 'b'));
       console.log('[CAN_DRAG_PIECE] Calculated for piece:', {
         piece: piece.pieceType,
         square,
@@ -84,13 +84,14 @@ export function GamePage() {
         result,
         gameOver,
         isAiThinking,
+        isLoadingInsights,
         isAiMode,
         turn,
-        condition: `!(${gameOver} || ${isAiThinking} || (${isAiMode} && ${turn === 'b'}))`
+        condition: `!(${gameOver} || ${isAiThinking} || ${isLoadingInsights} || (${isAiMode} && ${turn === 'b'}))`
       });
       return result;
     };
-  }, [gameOver, isAiThinking, isAiMode, turn]);
+  }, [gameOver, isAiThinking, isLoadingInsights, isAiMode, turn]);
 
   return (
     <div className="grid" role="main" aria-label="Chess game interface">
@@ -108,21 +109,6 @@ export function GamePage() {
       {/* Left Column - Chessboard */}
       <div className="col-12 lg:col-9">
         <div className="flex flex-column align-items-center gap-4 p-3">
-          {/* AI Mode Toggle */}
-          <div className="mb-3">
-            <ToggleButton
-              checked={isAiMode}
-              onChange={toggleAiMode}
-              onLabel="🤖 Play vs AI: ON"
-              offLabel="🤖 Play vs AI: OFF"
-              onIcon="pi pi-check"
-              offIcon="pi pi-times"
-              className={`w-full ${isAiMode ? 'p-button-info' : ''}`}
-              disabled={historySan.length > 0}
-              tooltip={historySan.length > 0 ? "Cannot change AI mode after game starts" : "Enable AI opponent (plays Black)"}
-            />
-          </div>
-
           {/* Enhanced turn display with AI thinking indicator */}
           <div className="mb-3">
             <div className="text-center">
@@ -132,7 +118,7 @@ export function GamePage() {
                 </div>
               ) : isAiThinking ? (
                 <div className="flex align-items-center justify-content-center gap-2">
-                  <i className="pi pi-spin pi-spinner"></i>
+                  <i className="pi pi-spin pi-spinner mr-10"></i>
                   <span className="text-xl font-semibold text-orange-500">AI is thinking...</span>
                 </div>
               ) : (
@@ -147,7 +133,7 @@ export function GamePage() {
           </div>
           
           {/* Chessboard Container */}
-          <div className="w-full max-w-35rem board-container">
+          <div className="w-full max-w-35rem board-container relative">
             <Chessboard
               options={{
                 id: "ChessGame",
@@ -162,6 +148,19 @@ export function GamePage() {
                 }
               }}
             />
+            
+            {/* Coach Feedback Loading Overlay */}
+            {!isLoadingInsights && (
+              <div
+                className="absolute inset-0 flex-content-centered z-10 rounded"
+                style={{ backgroundColor: '#222222', opacity: 0.8 }}
+              >
+                <div className="flex-content-centered">
+                  <i className="pi pi-spin pi-spinner text-white text-xl mr-10"></i>
+                  <span className="text-xl font-medium text-white">Getting feedback from AI coach...</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -169,6 +168,19 @@ export function GamePage() {
       {/* Right Column - Sidebar */}
       <div className="col-12 lg:col-3">
         <div className="flex flex-column gap-3 p-3 overflow-auto" style={{ maxHeight: '100vh' }}>
+          {/* AI Mode Toggle */}
+          <div className="mb-2">
+            <ToggleButton
+              checked={isAiMode}
+              onChange={toggleAiMode}
+              onLabel="🤖 Play vs AI: ON"
+              offLabel="🤖 Play vs AI: OFF"
+              className={`w-full ${isAiMode ? 'p-button-info' : ''}`}
+              disabled={historySan.length > 0}
+              tooltip={historySan.length > 0 ? "Cannot change AI mode after game starts" : "Enable AI opponent (plays Black)"}
+            />
+          </div>
+
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
             <Button
