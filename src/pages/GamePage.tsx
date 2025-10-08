@@ -49,7 +49,7 @@ export function GamePage() {
       toast.current?.show({
         severity: 'info',
         summary: 'New coach analysis ready',
-        detail: 'Check the Coach Panel for your move evaluation',
+        detail: 'Check the Coach Feedback for your move evaluation',
         life: 4000,
         icon: 'pi pi-lightbulb',
         className: 'coach-analysis-toast'
@@ -150,7 +150,7 @@ export function GamePage() {
             />
             
             {/* Coach Feedback Loading Overlay */}
-            {!isLoadingInsights && (
+            {isLoadingInsights && (
               <div
                 className="absolute inset-0 flex-content-centered z-10 rounded"
                 style={{ backgroundColor: '#222222', opacity: 0.8 }}
@@ -218,12 +218,12 @@ export function GamePage() {
 
       {/* Section Modals */}
       
-      {/* Coach Panel Modal */}
+      {/* Coach Feedback Modal */}
       <SectionModal
         visible={isModalOpen('coach')}
         onHide={closeModal}
         sectionType="coach"
-        title="Coach Panel"
+        title="Coach Feedback"
         size="large"
       >
         <CoachModalContent
@@ -248,12 +248,12 @@ export function GamePage() {
         <GameLogModalContent />
       </SectionModal>
 
-      {/* Move List Modal */}
+      {/* Move History Modal */}
       <SectionModal
         visible={isModalOpen('movelist')}
         onHide={closeModal}
         sectionType="movelist"
-        title="Move List"
+        title="Move History"
         size="small"
       >
         <MoveListModalContent history={historySan} />

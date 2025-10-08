@@ -9,7 +9,7 @@ export const MoveList: React.FC<MoveListProps> = ({ history }) => {
   const headerTemplate = (
     <div className="flex align-items-center gap-2">
       <i className="pi pi-list text-primary" />
-      <span className="font-semibold">Move List</span>
+      <span className="font-semibold">Move History</span>
     </div>
   );
 

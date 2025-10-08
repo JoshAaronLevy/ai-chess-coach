@@ -19,15 +19,15 @@ export const SectionButtons: React.FC<SectionButtonsProps> = ({
 }) => {
   return (
     <div className="flex flex-column gap-2" role="group" aria-label="Section controls">
-      {/* Coach Panel Button */}
+      {/* Coach Feedback Button */}
       <div className="relative">
         <Button
-          label="Coach Panel"
+          label="Coach Feedback"
           icon="pi pi-user"
           onClick={onOpenCoach}
           className="w-full"
           severity="secondary"
-          aria-label="Open coach panel with move analysis"
+          aria-label="Open coach feedback with move analysis"
           title="View coach analysis and move insights"
         />
         {hasNewInsights && (
@@ -60,15 +60,15 @@ export const SectionButtons: React.FC<SectionButtonsProps> = ({
         title="View game state, FEN, and captured pieces"
       />
 
-      {/* Move List Button */}
+      {/* Move History Button */}
       <div className="relative">
         <Button
-          label="Move List"
+          label="Move History"
           icon="pi pi-list"
           onClick={onOpenMoveList}
           className="w-full"
           severity="secondary"
-          aria-label={`Open move list${moveCount > 0 ? ` with ${moveCount} moves` : ''}`}
+          aria-label={`Open move history${moveCount > 0 ? ` with ${moveCount} moves` : ''}`}
           title="View complete move history"
         />
         {moveCount > 0 && (

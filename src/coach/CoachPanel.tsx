@@ -66,7 +66,7 @@ export const CoachPanel: React.FC<CoachPanelProps> = ({
     <div className="flex align-items-center justify-content-between w-full">
       <div className="flex align-items-center gap-2">
         <i className="pi pi-user text-primary" />
-        <span className="font-semibold">Coach Panel</span>
+        <span className="font-semibold">Coach Feedback</span>
       </div>
       {hasNewInsights && (
         <Badge
