@@ -31,7 +31,11 @@ export function GamePage() {
     // AI state and functions
     isAiMode,
     isAiThinking,
-    toggleAiMode
+    toggleAiMode,
+    // Save game functionality
+    saveCurrentGame,
+    isStateDifferentFromSaved,
+    hasSavedGame
   } = useChess();
 
   // Modal state management
@@ -59,6 +63,34 @@ export function GamePage() {
     // Update the previous state
     previousHasNewInsights.current = hasNewInsights;
   }, [hasNewInsights, insights]);
+
+  // Handle save game button click
+  const handleSaveGame = () => {
+    const success = saveCurrentGame();
+    if (success) {
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Game saved successfully',
+        detail: 'Your current game has been saved to local storage',
+        life: 3000,
+        icon: 'pi pi-check'
+      });
+    } else {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Failed to save game',
+        detail: 'An error occurred while saving your game',
+        life: 3000,
+        icon: 'pi pi-times'
+      });
+    }
+  };
+
+  // Handle load last game button click (placeholder implementation)
+  const handleLoadLastGame = () => {
+    console.log('Load Last Game clicked - functionality to be implemented');
+    // TODO: Implement actual game loading functionality
+  };
 
   // Adapter function to match react-chessboard signature
   const handlePieceDrop = ({ piece, sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean => {
@@ -183,6 +215,26 @@ export function GamePage() {
 
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
+            <Button
+              label="Save Current Game"
+              icon="pi pi-save"
+              onClick={handleSaveGame}
+              disabled={historySan.length === 0 || !isStateDifferentFromSaved}
+              className="w-full"
+              severity="secondary"
+              aria-label="Save the current game state"
+              title="Save the current game state to local storage"
+            />
+            <Button
+              label="Load Last Game"
+              icon="pi pi-upload"
+              onClick={handleLoadLastGame}
+              disabled={!hasSavedGame || historySan.length > 0}
+              className="w-full"
+              severity="secondary"
+              aria-label="Load the most recently saved game"
+              title="Load the most recently saved game from local storage"
+            />
             <Button
               label="Undo Move"
               icon="pi pi-undo"

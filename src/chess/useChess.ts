@@ -77,6 +77,19 @@ interface ChessGameState {
 }
 
 /**
+ * Interface for saved game data
+ */
+interface SavedGameData {
+  id: string;
+  timestamp: number;
+  fen: string;
+  historySan: string[];
+  isAiMode: boolean;
+  moveCount: number;
+  currentTurn: 'w' | 'b';
+}
+
+/**
  * Interface for the useChess hook return value
  */
 interface UseChessReturn extends ChessGameState {
@@ -98,6 +111,11 @@ interface UseChessReturn extends ChessGameState {
   isAiTurn: () => boolean;
   handleAiMoveResponse: (bestMove: { uci: string, san: string }) => void;
   executeAiMove: (uciMove: string) => void;
+  // Save game functionality
+  saveCurrentGame: () => boolean;
+  isStateDifferentFromSaved: boolean;
+  hasSavedGame: boolean;
+  checkHasSavedGame: () => boolean;
 }
 
 /**
@@ -132,12 +150,99 @@ export const useChess = (): UseChessReturn => {
   const [aiMoveTimeout, setAiMoveTimeout] = useState<number | null>(null);
   const aiColor = 'b' as const; // AI always plays black
 
+  // Save game state tracking
+  const [isStateDifferentFromSaved, setIsStateDifferentFromSaved] = useState<boolean>(false);
+  const [hasSavedGame, setHasSavedGame] = useState<boolean>(false);
+
+  /**
+   * Check if any saved game exists in localStorage
+   */
+  const checkHasSavedGame = useCallback((): boolean => {
+    try {
+      // Check localStorage for any saved games
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('acc_saved_game_')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            if (data.timestamp) {
+              setHasSavedGame(true);
+              return true;
+            }
+          } catch {
+            // Skip invalid entries
+          }
+        }
+      }
+      setHasSavedGame(false);
+      return false;
+    } catch (error) {
+      console.error('[CHECK_SAVED_GAME] Error checking for saved games:', error);
+      setHasSavedGame(false);
+      return false;
+    }
+  }, []);
+
   // Initialize game log on first mount if no current log exists
   useEffect(() => {
     if (gameLog.snapshots.length === 0) {
       gameLog.startNew(gameRef.current.fen());
     }
-  }, []); // Empty dependency array - only run on mount
+    // Check for saved games on component initialization
+    checkHasSavedGame();
+  }, [checkHasSavedGame]);
+
+  /**
+   * Check if current game state differs from the most recently saved state
+   */
+  const checkStateDifference = useCallback(() => {
+    try {
+      // Get all saved games from localStorage
+      const allSavedGames: SavedGameData[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('acc_saved_game_')) {
+          try {
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            if (data.timestamp) {
+              allSavedGames.push(data);
+            }
+          } catch {
+            // Skip invalid entries
+          }
+        }
+      }
+
+      if (allSavedGames.length === 0) {
+        // No saved games, so current state is always different
+        setIsStateDifferentFromSaved(true);
+        return;
+      }
+
+      // Get the most recent saved game
+      const mostRecentSave = allSavedGames.sort((a, b) => b.timestamp - a.timestamp)[0];
+      
+      // Compare current state with saved state
+      const currentState = {
+        fen: gameRef.current.fen(),
+        historySan: [...gameRef.current.history()],
+        isAiMode: isAiMode
+      };
+
+      const isDifferent = (
+        currentState.fen !== mostRecentSave.fen ||
+        currentState.historySan.length !== mostRecentSave.historySan.length ||
+        currentState.isAiMode !== mostRecentSave.isAiMode ||
+        !currentState.historySan.every((move, index) => move === mostRecentSave.historySan[index])
+      );
+
+      setIsStateDifferentFromSaved(isDifferent);
+    } catch (error) {
+      console.error('[STATE_COMPARISON] Error checking state difference:', error);
+      // On error, assume state is different
+      setIsStateDifferentFromSaved(true);
+    }
+  }, [isAiMode]);
 
   /**
    * Updates all state variables based on current chess.js instance
@@ -172,7 +277,10 @@ export const useChess = (): UseChessReturn => {
     } else {
       setGameResult(undefined);
     }
-  }, []);
+
+    // Check if current state differs from saved state
+    checkStateDifference();
+  }, [checkStateDifference]);
 
   /**
    * Handle piece drops from react-chessboard
@@ -475,6 +583,9 @@ export const useChess = (): UseChessReturn => {
     gameLog.resetAll(gameRef.current.fen());
     clearInsights(); // Clear insights when starting a new game
     
+    // Re-check for saved games after reset
+    checkHasSavedGame();
+    
     // Comprehensive AI state cleanup
     setIsAiThinking(false);
     setPendingAiMove(null);
@@ -716,6 +827,46 @@ export const useChess = (): UseChessReturn => {
     }
   }, [updateGameState, gameLog, isAiThinking, pendingAiMove, aiColor, aiMoveTimeout]);
 
+  /**
+   * Save the current game state to localStorage
+   * Returns true if successful, false if failed
+   */
+  const saveCurrentGame = useCallback((): boolean => {
+    try {
+      if (historySan.length === 0) {
+        console.warn('[SAVE_GAME] Cannot save game with no moves');
+        return false;
+      }
+
+      const timestamp = Date.now();
+      const savedGameData: SavedGameData = {
+        id: `saved_game_${timestamp}`,
+        timestamp,
+        fen: gameRef.current.fen(),
+        historySan: [...historySan],
+        isAiMode,
+        moveCount: historySan.length,
+        currentTurn: gameRef.current.turn()
+      };
+
+      const storageKey = `acc_saved_game_${timestamp}`;
+      localStorage.setItem(storageKey, JSON.stringify(savedGameData));
+      
+      console.log('[SAVE_GAME] Game saved successfully:', { key: storageKey, data: savedGameData });
+      
+      // Update state difference check after saving
+      checkStateDifference();
+      
+      // Update hasSavedGame state after successful save
+      setHasSavedGame(true);
+      
+      return true;
+    } catch (error) {
+      console.error('[SAVE_GAME] Failed to save game:', error);
+      return false;
+    }
+  }, [historySan, isAiMode, checkStateDifference]);
+
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo<UseChessReturn>(() => ({
     // State
@@ -748,7 +899,12 @@ export const useChess = (): UseChessReturn => {
     setAiThinking,
     isAiTurn,
     handleAiMoveResponse,
-    executeAiMove
+    executeAiMove,
+    // Save game functionality
+    saveCurrentGame,
+    isStateDifferentFromSaved,
+    hasSavedGame,
+    checkHasSavedGame
   }), [
     fen,
     turn,
@@ -774,7 +930,11 @@ export const useChess = (): UseChessReturn => {
     setAiThinking,
     isAiTurn,
     handleAiMoveResponse,
-    executeAiMove
+    executeAiMove,
+    saveCurrentGame,
+    isStateDifferentFromSaved,
+    hasSavedGame,
+    checkHasSavedGame
   ]);
 
   return returnValue;
