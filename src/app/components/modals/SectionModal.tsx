@@ -78,7 +78,6 @@ export const SectionModal: React.FC<SectionModalProps> = ({
       draggable={false}
       className={`section-modal section-modal-${sectionType || 'default'}`}
       contentStyle={contentStyle}
-      role="dialog"
       aria-labelledby={`${sectionType}-modal-header`}
       aria-describedby={`${sectionType}-modal-content`}
       focusOnShow={true}

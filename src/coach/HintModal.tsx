@@ -81,7 +81,6 @@ export const HintModal: React.FC<HintModalProps> = ({
       draggable={false}
       className="hint-modal"
       contentStyle={{ padding: '1.5rem' }}
-      role="dialog"
       aria-labelledby="hint-modal-header"
       aria-describedby="hint-modal-content"
       focusOnShow={true}

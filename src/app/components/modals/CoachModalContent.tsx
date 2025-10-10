@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Divider } from 'primereact/divider';
-import { Badge } from 'primereact/badge';
 import { Tag } from 'primereact/tag';
 import { ProgressBar } from 'primereact/progressbar';
 import { Accordion, AccordionTab } from 'primereact/accordion';
