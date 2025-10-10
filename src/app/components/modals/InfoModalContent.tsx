@@ -1,13 +1,6 @@
 import { Card } from 'primereact/card';
 
 export function InfoModalContent() {
-  const cardHeader = (
-    <div className="text-center p-4">
-      <i className="pi pi-chess-king text-6xl text-primary mb-3"></i>
-      <h1 className="text-4xl font-bold m-0 text-900">Welcome to AI Chess Coach</h1>
-    </div>
-  );
-
   const cardContent = (
     <div className="text-center">
       <p className="text-xl text-600 mb-4 line-height-3">
@@ -29,7 +22,6 @@ export function InfoModalContent() {
     <div className="flex justify-content-center">
       <div className="w-full max-w-4xl">
         <Card
-          header={cardHeader}
           className="shadow-4 border-round-lg"
         >
           {cardContent}

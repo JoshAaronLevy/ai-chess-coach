@@ -12,7 +12,6 @@ export function HomePage() {
   const cardHeader = (
     <div className="text-center p-4">
       <i className="pi pi-chess-king text-6xl text-primary mb-3"></i>
-      <h1 className="text-4xl font-bold m-0 text-900">Welcome to AI Chess Coach</h1>
     </div>
   );
 

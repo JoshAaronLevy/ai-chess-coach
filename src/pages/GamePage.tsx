@@ -34,6 +34,7 @@ export function GamePage() {
     toggleAiMode,
     // Save game functionality
     saveCurrentGame,
+    loadSavedGame,
     isStateDifferentFromSaved,
     hasSavedGame
   } = useChess();
@@ -86,10 +87,26 @@ export function GamePage() {
     }
   };
 
-  // Handle load last game button click (placeholder implementation)
+  // Handle load last game button click
   const handleLoadLastGame = () => {
-    console.log('Load Last Game clicked - functionality to be implemented');
-    // TODO: Implement actual game loading functionality
+    const success = loadSavedGame();
+    if (success) {
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Last game loaded successfully',
+        detail: 'Your most recent saved game has been restored',
+        life: 3000,
+        icon: 'pi pi-check'
+      });
+    } else {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Failed to load game',
+        detail: 'Unable to load the saved game. It may be corrupted or missing.',
+        life: 3000,
+        icon: 'pi pi-times'
+      });
+    }
   };
 
   // Adapter function to match react-chessboard signature
@@ -107,20 +124,8 @@ export function GamePage() {
 
   // Calculate whether pieces can be dragged based on game state and AI mode
   const canDragPiece = useMemo(() => {
-    return ({ isSparePiece, piece, square }: PieceHandlerArgs): boolean => {
+    return (): boolean => {
       const result = !(gameOver || isAiThinking || isLoadingInsights || (isAiMode && turn === 'b'));
-      console.log('[CAN_DRAG_PIECE] Calculated for piece:', {
-        piece: piece.pieceType,
-        square,
-        isSparePiece,
-        result,
-        gameOver,
-        isAiThinking,
-        isLoadingInsights,
-        isAiMode,
-        turn,
-        condition: `!(${gameOver} || ${isAiThinking} || ${isLoadingInsights} || (${isAiMode} && ${turn === 'b'}))`
-      });
       return result;
     };
   }, [gameOver, isAiThinking, isLoadingInsights, isAiMode, turn]);
