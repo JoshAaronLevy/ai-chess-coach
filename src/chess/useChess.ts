@@ -219,7 +219,7 @@ export const useChess = (): UseChessReturn => {
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
   // AI game mode state
-  const [isAiMode, setIsAiMode] = useState<boolean>(false);
+  const [isAiMode, setIsAiMode] = useState<boolean>(true);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const [pendingAiMove, setPendingAiMove] = useState<string | null>(null);
   const [aiMoveTimeout, setAiMoveTimeout] = useState<number | null>(null);
@@ -466,9 +466,6 @@ export const useChess = (): UseChessReturn => {
     
     postCoachGrade(payload)
       .then(resp => {
-        // Keep existing log exactly as is
-        console.log('[COACH] API call completed successfully:', JSON.stringify(resp));
-        
         // Parse and store insights in state
         const parsedInsights = parseDifyAnswer(resp);
         console.log('[AI Tutor Insights]', JSON.stringify(parsedInsights));
@@ -484,7 +481,12 @@ export const useChess = (): UseChessReturn => {
           
           // Enhanced AI move validation and side checking with difficulty-based selection
           if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
-            console.log('[DEBUG] AI auto-move triggered. isAiMode:', isAiMode, 'turn:', gameRef.current.turn(), 'aiColor:', aiColor, 'gameOver:', gameRef.current.isGameOver());
+            console.log('[AI Auto-Move]', {
+              turn: gameRef.current.turn(),
+              aiColor,
+              difficulty: difficulty,
+              gameOver: gameRef.current.isGameOver()
+            });
             
             // Validate that the move is for the correct side
             const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
@@ -515,7 +517,11 @@ export const useChess = (): UseChessReturn => {
                 // Try to apply the selected move
                 const moveResult = applyUciOrSan(gameRef.current, moveSelection.move);
                 if (moveResult) {
-                  console.log('[AI Move] difficulty=', difficulty, 'selected=', moveSelection.move, 'fallbackUsed=', moveSelection.fallbackUsed);
+                  console.log('[AI Move Selected]', {
+                    difficulty,
+                    move: { uci: moveSelection.move.uci, san: moveSelection.move.san },
+                    usedFallback: moveSelection.fallbackUsed
+                  });
                   
                   // Convert to the format expected by handleAiMoveResponse
                   const aiMove = {
@@ -844,6 +850,7 @@ export const useChess = (): UseChessReturn => {
 
   /**
    * Toggle AI mode on/off (only allowed when no moves have been made)
+   * @deprecated AI mode is now always enabled. This function is kept for compatibility but has no effect.
    */
   const toggleAiMode = useCallback(() => {
     // Enhanced validation
@@ -952,7 +959,11 @@ export const useChess = (): UseChessReturn => {
       
       // Update game state
       updateGameState();
-      gameLog.recordAfterMove(gameRef.current, moveResult);
+      
+      // Record move in game log if initialized
+      if (gameLog.snapshots.length > 0) {
+        gameLog.recordAfterMove(gameRef.current, moveResult);
+      }
       
       // Clear timeout if it exists
       if (aiMoveTimeout) {
@@ -976,6 +987,37 @@ export const useChess = (): UseChessReturn => {
         // No further AI processing needed
         return true;
       }
+      
+      // Call coaching API after AI move to continue analysis cycle
+      const gradeRequest = {
+        chess_position: gameRef.current.fen(),
+        previous_move_uci: moveResult.uci || null,
+        previous_move_san: moveResult.san || null
+      };
+      
+      postCoachGrade(gradeRequest)
+        .then(response => {
+          console.log('[AI] Coach analysis completed after AI move');
+          // Parse and potentially use insights, but don't trigger another AI move
+          const parsedInsights = parseDifyAnswer(response);
+          if (parsedInsights) {
+            setInsights(parsedInsights);
+            setHasNewInsights(true);
+            setInsightsError(null);
+          }
+        })
+        .catch(err => {
+          console.log('[AI] Coach analysis failed after AI move:', err);
+          // Try to parse insights from error response
+          const parsedInsights = parseDifyAnswer(err);
+          if (parsedInsights) {
+            setInsights(parsedInsights);
+            setHasNewInsights(true);
+            setInsightsError(null);
+          } else {
+            setInsightsError('Failed to get coaching analysis after AI move');
+          }
+        });
       
       return true;
     } catch (error) {
