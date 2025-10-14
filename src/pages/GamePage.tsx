@@ -2,7 +2,7 @@ import { Chessboard } from 'react-chessboard';
 import type { PieceDropHandlerArgs, SquareHandlerArgs, PieceHandlerArgs } from 'react-chessboard';
 import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
-import { Tag } from 'primereact/tag';
+// import { Tag } from 'primereact/tag';
 import { useChess } from '../chess/useChess';
 import { useSectionModals } from '../hooks/useSectionModals';
 import { SectionButtons } from '../app/components/SectionButtons';
@@ -55,14 +55,14 @@ export function GamePage() {
     return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
   };
 
-  const getDifficultySeverity = (difficulty: AiDifficulty | null) => {
-    switch (difficulty) {
-      case 'beginner': return 'success';
-      case 'intermediate': return 'info';
-      case 'advanced': return 'danger';
-      default: return 'secondary';
-    }
-  };
+  // const getDifficultySeverity = (difficulty: AiDifficulty | null) => {
+  //   switch (difficulty) {
+  //     case 'beginner': return 'success';
+  //     case 'intermediate': return 'info';
+  //     case 'advanced': return 'danger';
+  //     default: return 'secondary';
+  //   }
+  // };
 
   // Auto-open modal on initial load if no difficulty set
   useEffect(() => {
@@ -242,18 +242,25 @@ export function GamePage() {
               aria-label="Change AI difficulty"
               title="Click to change AI difficulty level"
             >
-              <Tag
-                value={getDifficultyLabel(difficulty).charAt(0)}
-                severity={getDifficultySeverity(difficulty)}
-                style={{ minWidth: '1.5rem', height: '1.5rem' }}
-                className="text-xs font-bold"
-              />
-              <span>{getDifficultyLabel(difficulty)}</span>
+              <span className="difficulty-label">{getDifficultyLabel(difficulty)}</span>
             </Button>
           </div>
 
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
+            <Button
+              label="New Game"
+              icon="pi pi-plus"
+              onClick={() => {
+                reset();
+                openDifficultyModal();
+              }}
+              disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
+              className="w-full"
+              severity="info"
+              aria-label="Start a new chess game"
+              title="Start a new chess game"
+            />
             <Button
               label="Save Game"
               icon="pi pi-save"
@@ -283,19 +290,6 @@ export function GamePage() {
               severity="secondary"
               aria-label="Undo the last move"
               title="Undo the last move"
-            />
-            <Button
-              label="New Game"
-              icon="pi pi-refresh"
-              onClick={() => {
-                reset();
-                openDifficultyModal();
-              }}
-              disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
-              className="w-full"
-              severity="info"
-              aria-label="Start a new chess game"
-              title="Start a new chess game"
             />
           </div>
 

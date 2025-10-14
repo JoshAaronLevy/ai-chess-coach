@@ -996,6 +996,10 @@ export const useChess = (): UseChessReturn => {
         previous_move_san: moveInfo.san
       };
       
+      // Set loading state before API call (matching normal user move flow)
+      setIsLoadingInsights(true);
+      setInsightsError(null);
+      
       postCoachGrade(gradeRequest)
         .then(response => {
           console.log('[AI] Coach analysis completed after AI move');
@@ -1018,6 +1022,9 @@ export const useChess = (): UseChessReturn => {
           } else {
             setInsightsError('Failed to get coaching analysis after AI move');
           }
+        })
+        .finally(() => {
+          setIsLoadingInsights(false);
         });
       
       return true;

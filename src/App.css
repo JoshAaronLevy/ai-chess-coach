@@ -139,6 +139,11 @@
   }
 }
 
+.difficulty-label {
+  width: 100%;
+  color: #FFFFFF;
+}
+
 /* Ensure grade colors have sufficient contrast */
 .p-tag.p-tag-success {
   background-color: #28a745;
