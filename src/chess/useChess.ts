@@ -989,10 +989,11 @@ export const useChess = (): UseChessReturn => {
       }
       
       // Call coaching API after AI move to continue analysis cycle
+      const moveInfo = toMoveInfo(moveResult);
       const gradeRequest = {
         chess_position: gameRef.current.fen(),
-        previous_move_uci: moveResult.uci || null,
-        previous_move_san: moveResult.san || null
+        previous_move_uci: moveInfo.uci,
+        previous_move_san: moveInfo.san
       };
       
       postCoachGrade(gradeRequest)
