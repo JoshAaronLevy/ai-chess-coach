@@ -7,6 +7,7 @@ import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
 import { applyUciMove } from '../utils/uciUtils.js';
+import { useAiDifficultyStore } from '../store/aiDifficultyStore';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -14,6 +15,76 @@ console.info('[USE_CHESS_INIT]');
  * Type for chess piece colors
  */
 type ChessColor = 'w' | 'b';
+
+/**
+ * Type for AI difficulty levels
+ */
+type Difficulty = 'beginner' | 'intermediate' | 'advanced';
+
+/**
+ * Helper function to pick AI move based on difficulty setting
+ */
+function pickAiMoveForDifficulty(
+  difficulty: Difficulty,
+  nextMoves?: {
+    beginner?: { uci?: string | null; san?: string | null };
+    intermediate?: { uci?: string | null; san?: string | null };
+    advanced?: { uci?: string | null; san?: string | null };
+  }
+) {
+  console.log('[DEBUG] pickAiMoveForDifficulty called with:', { difficulty, nextMoves });
+  
+  if (!nextMoves) {
+    console.log('[DEBUG] pickAiMoveForDifficulty: no nextMoves provided');
+    return null;
+  }
+
+  const normalize = (m?: { uci?: string | null; san?: string | null } | null) => {
+    const result = m && ((m.uci && m.uci.trim()) || (m.san && m.san.trim())) ? m : null;
+    console.log('[DEBUG] normalize called with:', m, 'result:', result);
+    return result;
+  };
+
+  console.log('[DEBUG] Looking for primary move for difficulty:', difficulty);
+  const primary =
+    difficulty === 'beginner' ? normalize(nextMoves.beginner) :
+    difficulty === 'intermediate' ? normalize(nextMoves.intermediate) :
+    normalize(nextMoves.advanced);
+
+  console.log('[DEBUG] Primary move found:', primary);
+  if (primary) return { move: primary, fallbackUsed: false };
+
+  // Fallback order: advanced → intermediate → beginner
+  console.log('[DEBUG] Primary move not found, trying fallbacks...');
+  const order: Difficulty[] = ['advanced', 'intermediate', 'beginner'];
+  for (const key of order) {
+    const difficultyMoves = nextMoves[key];
+    console.log('[DEBUG] Trying fallback difficulty:', key, 'moves:', difficultyMoves);
+    const m = normalize(difficultyMoves);
+    if (m) {
+      console.log('[DEBUG] Fallback move found:', m, 'for difficulty:', key);
+      return { move: m, fallbackUsed: true };
+    }
+  }
+  console.log('[DEBUG] No moves found in any difficulty level');
+  return null;
+}
+
+/**
+ * Helper function to apply UCI or SAN move to the game
+ */
+function applyUciOrSan(game: Chess, m: { uci?: string | null; san?: string | null }) {
+  if (m.uci && m.uci.length >= 4) {
+    const from = m.uci.slice(0, 2);
+    const to = m.uci.slice(2, 4);
+    const promotion = m.uci.length === 5 ? m.uci[4] : undefined;
+    return game.move({ from, to, promotion });
+  }
+  if (m.san) {
+    return game.move(m.san);
+  }
+  return null;
+}
 
 /**
  * Compute detailed legal moves with check detection
@@ -129,6 +200,9 @@ export const useChess = (): UseChessReturn => {
   
   // Initialize game log hook
   const gameLog = useGameLog();
+  
+  // Get difficulty setting from store
+  const { difficulty } = useAiDifficultyStore();
   
   // Game state derived from gameRef.current
   const [fen, setFen] = useState<string>(gameRef.current.fen());
@@ -408,30 +482,73 @@ export const useChess = (): UseChessReturn => {
           setTurn(gameRef.current.turn());
           console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', gameRef.current.turn());
           
-          // Enhanced AI move validation and side checking
+          // Enhanced AI move validation and side checking with difficulty-based selection
           if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
-            const bestMove = parsedInsights.bestMove?.uci;
-            if (bestMove) {
-              // Validate that the move is for the correct side
-              const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
-              if (expectedSide !== aiColor) {
-                console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
-                setIsAiThinking(false);
-                return;
+            console.log('[DEBUG] AI auto-move triggered. isAiMode:', isAiMode, 'turn:', gameRef.current.turn(), 'aiColor:', aiColor, 'gameOver:', gameRef.current.isGameOver());
+            
+            // Validate that the move is for the correct side
+            const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
+            if (expectedSide !== aiColor) {
+              console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
+              setIsAiThinking(false);
+              return;
+            }
+            
+            // Double-check game state before proceeding
+            if (gameRef.current.isGameOver()) {
+              console.log('[AI] Game ended before AI could move');
+              setIsAiThinking(false);
+              return;
+            }
+            
+            // DEBUG: Log difficulty and next_moves availability
+            console.log('[DEBUG] Difficulty check - difficulty:', difficulty, 'next_moves available:', !!parsedInsights.next_moves, 'bestMove available:', !!parsedInsights.bestMove);
+            if (parsedInsights.next_moves) {
+              console.log('[DEBUG] Next moves structure:', JSON.stringify(parsedInsights.next_moves));
+            }
+            
+            // Use difficulty-based move selection if available, fallback to bestMove
+            if (parsedInsights.next_moves) {
+              console.log('[DEBUG] Using difficulty-based move selection with difficulty:', difficulty);
+              const moveSelection = pickAiMoveForDifficulty(difficulty, parsedInsights.next_moves);
+              if (moveSelection) {
+                // Try to apply the selected move
+                const moveResult = applyUciOrSan(gameRef.current, moveSelection.move);
+                if (moveResult) {
+                  console.log('[AI Move] difficulty=', difficulty, 'selected=', moveSelection.move, 'fallbackUsed=', moveSelection.fallbackUsed);
+                  
+                  // Convert to the format expected by handleAiMoveResponse
+                  const aiMove = {
+                    uci: moveSelection.move.uci || '',
+                    san: moveSelection.move.san || moveResult.san
+                  };
+                  
+                  // Undo the test move and let handleAiMoveResponse apply it properly
+                  gameRef.current.undo();
+                  handleAiMoveResponse(aiMove);
+                } else {
+                  console.warn('[AI] Selected difficulty-based move is illegal, trying fallback to bestMove');
+                  if (parsedInsights.bestMove) {
+                    handleAiMoveResponse(parsedInsights.bestMove);
+                  } else {
+                    console.warn('[AI] No legal moves available');
+                    setIsAiThinking(false);
+                  }
+                }
+              } else {
+                console.warn('[AI] No moves found for difficulty level, trying fallback to bestMove');
+                if (parsedInsights.bestMove) {
+                  handleAiMoveResponse(parsedInsights.bestMove);
+                } else {
+                  console.warn('[AI] No bestMove fallback available');
+                  setIsAiThinking(false);
+                }
               }
-              
-              // Double-check game state before proceeding
-              if (gameRef.current.isGameOver()) {
-                console.log('[AI] Game ended before AI could move');
-                setIsAiThinking(false);
-                return;
-              }
-              
-              if (parsedInsights.bestMove) {
-                handleAiMoveResponse(parsedInsights.bestMove);
-              }
+            } else if (parsedInsights.bestMove) {
+              // Fallback to original bestMove logic when difficulty not set or next_moves not available
+              handleAiMoveResponse(parsedInsights.bestMove);
             } else {
-              console.warn('[AI] AI mode enabled but no bestMove found in API response');
+              console.warn('[AI] AI mode enabled but no moves found in API response');
               setIsAiThinking(false);
             }
           }
@@ -456,30 +573,75 @@ export const useChess = (): UseChessReturn => {
           setTurn(gameRef.current.turn());
           console.log('[TURN_DEBUG] API call failed but insights parsed - Turn updated to:', gameRef.current.turn());
           
-          // Enhanced AI move validation and side checking
+          // Enhanced AI move validation and side checking with difficulty-based selection (error case)
           if (isAiMode && gameRef.current.turn() === aiColor && !gameRef.current.isGameOver()) {
-            const bestMove = parsedInsights.bestMove?.uci;
-            if (bestMove) {
-              // Validate that the move is for the correct side
-              const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
-              if (expectedSide !== aiColor) {
-                console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
-                setIsAiThinking(false);
-                return;
-              }
+            // Validate that the move is for the correct side
+            const expectedSide = gameRef.current.turn(); // Should be 'b' for AI
+            if (expectedSide !== aiColor) {
+              console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
+              setIsAiThinking(false);
+              return;
+            }
+            
+            // Double-check game state before proceeding
+            if (gameRef.current.isGameOver()) {
+              console.log('[AI] Game ended before AI could move');
+              setIsAiThinking(false);
+              return;
+            }
+            
+            // Use difficulty-based move selection if available, fallback to bestMove
+            if (parsedInsights.next_moves) {
+              console.log('[DEBUG] Calling pickAiMoveForDifficulty with:', { difficulty, next_moves: parsedInsights.next_moves });
+              const moveSelection = pickAiMoveForDifficulty(difficulty, parsedInsights.next_moves);
+              console.log('[DEBUG] pickAiMoveForDifficulty returned:', moveSelection);
               
-              // Double-check game state before proceeding
-              if (gameRef.current.isGameOver()) {
-                console.log('[AI] Game ended before AI could move');
-                setIsAiThinking(false);
-                return;
+              if (moveSelection) {
+                console.log('[DEBUG] Attempting to apply selected move:', moveSelection.move);
+                // Try to apply the selected move
+                const moveResult = applyUciOrSan(gameRef.current, moveSelection.move);
+                console.log('[DEBUG] applyUciOrSan result:', moveResult);
+                
+                if (moveResult) {
+                  console.log('[AI Move] difficulty=', difficulty, 'selected=', moveSelection.move, 'fallbackUsed=', moveSelection.fallbackUsed);
+                  
+                  // Convert to the format expected by handleAiMoveResponse
+                  const aiMove = {
+                    uci: moveSelection.move.uci || '',
+                    san: moveSelection.move.san || moveResult.san
+                  };
+                  
+                  console.log('[DEBUG] Converted aiMove for handleAiMoveResponse:', aiMove);
+                  // Undo the test move and let handleAiMoveResponse apply it properly
+                  gameRef.current.undo();
+                  handleAiMoveResponse(aiMove);
+                } else {
+                  console.warn('[AI] Selected difficulty-based move is illegal, trying fallback to bestMove');
+                  if (parsedInsights.bestMove) {
+                    console.log('[DEBUG] Using bestMove fallback:', parsedInsights.bestMove);
+                    handleAiMoveResponse(parsedInsights.bestMove);
+                  } else {
+                    console.warn('[AI] No legal moves available');
+                    setIsAiThinking(false);
+                  }
+                }
+              } else {
+                console.warn('[AI] No moves found for difficulty level, trying fallback to bestMove');
+                if (parsedInsights.bestMove) {
+                  console.log('[DEBUG] Using bestMove fallback after difficulty selection failed:', parsedInsights.bestMove);
+                  handleAiMoveResponse(parsedInsights.bestMove);
+                } else {
+                  console.warn('[AI] No bestMove fallback available');
+                  setIsAiThinking(false);
+                }
               }
-              
-              if (parsedInsights.bestMove) {
-                handleAiMoveResponse(parsedInsights.bestMove);
-              }
+            } else if (parsedInsights.bestMove) {
+              // Fallback to original bestMove logic when difficulty not set or next_moves not available
+              console.log('[DEBUG] Using bestMove because difficulty is null or next_moves unavailable:', parsedInsights.bestMove);
+              handleAiMoveResponse(parsedInsights.bestMove);
             } else {
-              console.warn('[AI] AI mode enabled but no bestMove found in API response');
+              console.warn('[AI] AI mode enabled but no moves found in API response');
+              console.log('[DEBUG] Final state - difficulty:', difficulty, 'next_moves:', !!parsedInsights.next_moves, 'bestMove:', !!parsedInsights.bestMove);
               setIsAiThinking(false);
             }
           }

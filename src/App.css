@@ -205,3 +205,23 @@
 .mr-10 {
   margin-right: 10px;
 }
+
+.difficulty-modal {
+  min-width: 650px;
+}
+
+.difficulty-modal .p-dialog-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.difficulty-modal .p-dialog-header-icons {
+  display: none;
+}
+
+.difficulty-modal .p-dialog-content {
+  display: flex;
+  justify-content: center;
+}

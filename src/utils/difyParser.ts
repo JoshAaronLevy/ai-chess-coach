@@ -18,6 +18,23 @@ const AlternativeSchema = z.object({
 });
 
 /**
+ * Zod schema for difficulty-based moves
+ */
+const DifficultyMoveSchema = z.object({
+  uci: z.string().optional().nullable(),
+  san: z.string().optional().nullable(),
+});
+
+/**
+ * Zod schema for next moves by difficulty
+ */
+const NextMovesSchema = z.object({
+  beginner: DifficultyMoveSchema.optional(),
+  intermediate: DifficultyMoveSchema.optional(),
+  advanced: DifficultyMoveSchema.optional(),
+});
+
+/**
  * Zod schema for validating the parsed answer content from Dify
  */
 const DifyAnswerContentSchema = z.object({
@@ -28,6 +45,7 @@ const DifyAnswerContentSchema = z.object({
   last_move_grade: z.string().optional(),
   last_move_explanation: z.string().optional(),
   best_move: MoveSchema.optional(),
+  next_moves: NextMovesSchema.optional(),
   alternatives: z.array(AlternativeSchema).optional(),
   reasoning: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
@@ -55,6 +73,11 @@ export interface TutorInsights {
     uci: string;
     san: string;
   } | null;
+  next_moves?: {
+    beginner?: { uci?: string | null; san?: string | null };
+    intermediate?: { uci?: string | null; san?: string | null };
+    advanced?: { uci?: string | null; san?: string | null };
+  };
   alternatives: Array<{
     uci: string;
     san: string;
@@ -171,6 +194,7 @@ export function parseDifyAnswer(rawResponse: unknown): TutorInsights | null {
         uci: validatedContent.best_move.uci,
         san: validatedContent.best_move.san,
       } : null,
+      next_moves: validatedContent.next_moves,
       alternatives: validatedContent.alternatives || [],
       reasoning: validatedContent.reasoning || null,
       confidence: validatedContent.confidence || null,

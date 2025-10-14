@@ -1,8 +1,8 @@
 import { Chessboard } from 'react-chessboard';
 import type { PieceDropHandlerArgs, SquareHandlerArgs, PieceHandlerArgs } from 'react-chessboard';
 import { Button } from 'primereact/button';
-import { ToggleButton } from 'primereact/togglebutton';
 import { Toast } from 'primereact/toast';
+import { Tag } from 'primereact/tag';
 import { useChess } from '../chess/useChess';
 import { useSectionModals } from '../hooks/useSectionModals';
 import { SectionButtons } from '../app/components/SectionButtons';
@@ -10,6 +10,8 @@ import { SectionModal } from '../app/components/modals/SectionModal';
 import { CoachModalContent } from '../app/components/modals/CoachModalContent';
 import { GameLogModalContent } from '../app/components/modals/GameLogModalContent';
 import { MoveListModalContent } from '../app/components/modals/MoveListModalContent';
+import { DifficultyModal } from '../app/components/modals/DifficultyModal';
+import { useAiDifficultyStore, type AiDifficulty } from '../store/aiDifficultyStore';
 import '../App.css';
 import { useRef, useEffect, useMemo } from 'react';
 
@@ -28,10 +30,8 @@ export function GamePage() {
     hasNewInsights,
     isLoadingInsights,
     markInsightsAsViewed,
-    // AI state and functions
-    isAiMode,
+    // AI state and functions (AI is always on now)
     isAiThinking,
-    toggleAiMode,
     // Save game functionality
     saveCurrentGame,
     loadSavedGame,
@@ -39,12 +39,37 @@ export function GamePage() {
     hasSavedGame
   } = useChess();
 
+  // AI Difficulty Store
+  const { difficulty, openDifficultyModal } = useAiDifficultyStore();
+
   // Modal state management
   const { openModal, closeModal, isModalOpen } = useSectionModals();
 
   // Toast reference for showing notifications
   const toast = useRef<Toast>(null);
   const previousHasNewInsights = useRef<boolean>(false);
+
+  // Helper functions for difficulty display
+  const getDifficultyLabel = (difficulty: AiDifficulty | null): string => {
+    if (!difficulty) return 'Not Set';
+    return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+  };
+
+  const getDifficultySeverity = (difficulty: AiDifficulty | null) => {
+    switch (difficulty) {
+      case 'beginner': return 'success';
+      case 'intermediate': return 'info';
+      case 'advanced': return 'danger';
+      default: return 'secondary';
+    }
+  };
+
+  // Auto-open modal on initial load if no difficulty set
+  useEffect(() => {
+    if (difficulty === null) {
+      openDifficultyModal();
+    }
+  }, [difficulty, openDifficultyModal]);
 
   // Show toast notification when new insights arrive
   useEffect(() => {
@@ -122,13 +147,13 @@ export function GamePage() {
     return result;
   };
 
-  // Calculate whether pieces can be dragged based on game state and AI mode
+  // Calculate whether pieces can be dragged based on game state (AI is always on for black)
   const canDragPiece = useMemo(() => {
     return (): boolean => {
-      const result = !(gameOver || isAiThinking || isLoadingInsights || (isAiMode && turn === 'b'));
+      const result = !(gameOver || isAiThinking || isLoadingInsights || turn === 'b');
       return result;
     };
-  }, [gameOver, isAiThinking, isLoadingInsights, isAiMode, turn]);
+  }, [gameOver, isAiThinking, isLoadingInsights, turn]);
 
   return (
     <div className="grid" role="main" aria-label="Chess game interface">
@@ -161,7 +186,7 @@ export function GamePage() {
               ) : (
                 <div className="text-xl font-semibold text-primary">
                   <strong>Turn:</strong> {turn === 'w' ? 'White' : 'Black'}
-                  {isAiMode && turn === 'b' && !gameOver && (
+                  {turn === 'b' && !gameOver && (
                     <span className="ml-2 text-blue-500">(AI)</span>
                   )}
                 </div>
@@ -204,24 +229,33 @@ export function GamePage() {
 
       {/* Right Column - Sidebar */}
       <div className="col-12 lg:col-3">
-        <div className="flex flex-column gap-3 p-3 overflow-auto" style={{ maxHeight: '100vh' }}>
-          {/* AI Mode Toggle */}
-          <div className="mb-2">
-            <ToggleButton
-              checked={isAiMode}
-              onChange={toggleAiMode}
-              onLabel="🤖 Play vs AI: ON"
-              offLabel="🤖 Play vs AI: OFF"
-              className={`w-full ${isAiMode ? 'p-button-info' : ''}`}
-              disabled={historySan.length > 0}
-              tooltip={historySan.length > 0 ? "Cannot change AI mode after game starts" : "Enable AI opponent (plays Black)"}
-            />
+        <div className="flex flex-column gap-3 p-3 overflow-auto" style={{ minHeight: '100vh' }}>
+          {/* AI Difficulty Display */}
+          <div className="mb-3">
+            <div className="text-sm font-semibold mb-2">AI Difficulty</div>
+            <Button
+              icon="pi pi-pencil"
+              onClick={openDifficultyModal}
+              className="w-full flex align-items-center gap-2"
+              severity="secondary"
+              outlined
+              aria-label="Change AI difficulty"
+              title="Click to change AI difficulty level"
+            >
+              <Tag
+                value={getDifficultyLabel(difficulty).charAt(0)}
+                severity={getDifficultySeverity(difficulty)}
+                style={{ minWidth: '1.5rem', height: '1.5rem' }}
+                className="text-xs font-bold"
+              />
+              <span>{getDifficultyLabel(difficulty)}</span>
+            </Button>
           </div>
 
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
             <Button
-              label="Save Current Game"
+              label="Save Game"
               icon="pi pi-save"
               onClick={handleSaveGame}
               disabled={historySan.length === 0 || !isStateDifferentFromSaved}
@@ -253,7 +287,10 @@ export function GamePage() {
             <Button
               label="New Game"
               icon="pi pi-refresh"
-              onClick={reset}
+              onClick={() => {
+                reset();
+                openDifficultyModal();
+              }}
               disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
               className="w-full"
               severity="info"
@@ -314,7 +351,10 @@ export function GamePage() {
         size="small"
       >
         <MoveListModalContent history={historySan} />
-      </SectionModal>
-    </div>
-  );
-}
+        </SectionModal>
+  
+        {/* AI Difficulty Modal */}
+        <DifficultyModal />
+      </div>
+    );
+  }
