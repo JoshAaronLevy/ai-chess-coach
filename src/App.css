@@ -144,6 +144,14 @@
   color: #FFFFFF;
 }
 
+.p-dialog-header-close {
+  visibility: hidden;
+}
+
+.p-dialog-title {
+  text-align: center;;
+}
+
 /* Ensure grade colors have sufficient contrast */
 .p-tag.p-tag-success {
   background-color: #28a745;

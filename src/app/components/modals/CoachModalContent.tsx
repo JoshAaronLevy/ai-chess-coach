@@ -10,6 +10,8 @@ import { HintModal } from '../../../coach/HintModal';
 
 interface CoachModalContentProps {
   lastSan?: string;
+  lastMoveFrom?: string;
+  lastMoveTo?: string;
   gameOver?: boolean;
   gameResult?: string;
   // Coach insights props
@@ -30,6 +32,8 @@ const getGradeColor = (grade: string): 'success' | 'info' | 'warning' | 'danger'
 
 export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   lastSan,
+  lastMoveFrom,
+  lastMoveTo,
   gameOver,
   gameResult,
   insights,
@@ -101,10 +105,25 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
       <div>
         <div className="flex align-items-center gap-2 mb-2">
           <i className="pi pi-arrow-right text-primary" />
-          <span className="font-medium">Last Move</span>
+          <span className="font-medium">
+            Last Move
+            {insights?.lastMove?.grade && (
+              <>
+                {' - '}
+                <Tag
+                  value={insights.lastMove.grade}
+                  severity={getGradeColor(insights.lastMove.grade)}
+                  className="font-bold ml-1"
+                />
+              </>
+            )}
+          </span>
         </div>
         <div className="ml-4 text-700">
-          {lastSan ?? '—'}
+          {lastMoveFrom && lastMoveTo
+            ? `${lastMoveFrom} → ${lastMoveTo}`
+            : lastSan ?? '—'
+          }
         </div>
       </div>
 
@@ -130,27 +149,6 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
       {/* Insights Content */}
       {!isLoadingInsights && (
         <>
-          {/* Grade Section */}
-          <div>
-            <div className="flex align-items-center gap-2 mb-2">
-              <i className="pi pi-star text-primary" />
-              <span className="font-medium">Grade</span>
-            </div>
-            <div className="ml-4">
-              {insights?.lastMove?.grade ? (
-                <Tag
-                  value={insights.lastMove.grade}
-                  severity={getGradeColor(insights.lastMove.grade)}
-                  className="font-bold"
-                />
-              ) : (
-                <span className="text-700">—</span>
-              )}
-            </div>
-          </div>
-
-          <Divider />
-
           {/* Explanation Section */}
           <div>
             <div className="flex align-items-center gap-2 mb-2">
@@ -193,8 +191,9 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
             </>
           )}
 
-          {/* Reasoning Section - Collapsible */}
-          {insights?.reasoning && (
+          {/* Move Suggestions Section - Collapsible */}
+          {insights?.next_moves &&
+           Object.values(insights.next_moves).some(move => move?.uci || move?.san) && (
             <>
               <Divider />
               <div>
@@ -202,13 +201,40 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                   <AccordionTab
                     header={
                       <div className="flex align-items-center gap-2">
-                        <i className="pi pi-book text-primary" />
-                        <span className="font-medium">Deeper Reasoning</span>
+                        <i className="pi pi-lightbulb text-primary" />
+                        <span className="font-medium">See Move Suggestions</span>
                       </div>
                     }
                   >
                     <div className="text-700 line-height-3 p-2">
-                      {insights.reasoning}
+                      <div className="flex flex-column gap-2">
+                        {insights.next_moves.advanced?.uci || insights.next_moves.advanced?.san ? (
+                          <div>
+                            <span className="font-semibold text-800">Advanced: </span>
+                            <span className="font-medium">
+                              {insights.next_moves.advanced.san || insights.next_moves.advanced.uci}
+                            </span>
+                          </div>
+                        ) : null}
+                        
+                        {insights.next_moves.intermediate?.uci || insights.next_moves.intermediate?.san ? (
+                          <div>
+                            <span className="font-semibold text-800">Intermediate: </span>
+                            <span className="font-medium">
+                              {insights.next_moves.intermediate.san || insights.next_moves.intermediate.uci}
+                            </span>
+                          </div>
+                        ) : null}
+                        
+                        {insights.next_moves.beginner?.uci || insights.next_moves.beginner?.san ? (
+                          <div>
+                            <span className="font-semibold text-800">Beginner: </span>
+                            <span className="font-medium">
+                              {insights.next_moves.beginner.san || insights.next_moves.beginner.uci}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </AccordionTab>
                 </Accordion>

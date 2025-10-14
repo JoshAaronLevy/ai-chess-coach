@@ -21,6 +21,8 @@ export function GamePage() {
     turn,
     historySan,
     lastSan,
+    lastMoveFrom,
+    lastMoveTo,
     gameOver,
     gameResult,
     onPieceDrop,
@@ -316,6 +318,8 @@ export function GamePage() {
       >
         <CoachModalContent
           lastSan={lastSan}
+          lastMoveFrom={lastMoveFrom}
+          lastMoveTo={lastMoveTo}
           gameOver={gameOver}
           gameResult={gameResult}
           insights={insights}

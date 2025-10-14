@@ -138,6 +138,8 @@ interface ChessGameState {
   turn: ChessColor;
   historySan: string[];
   lastSan?: string;
+  lastMoveFrom?: string;
+  lastMoveTo?: string;
   gameOver: boolean;
   gameResult?: string;
   // AI game mode state
@@ -209,6 +211,8 @@ export const useChess = (): UseChessReturn => {
   const [turn, setTurn] = useState<ChessColor>(gameRef.current.turn());
   const [historySan, setHistorySan] = useState<string[]>([]);
   const [lastSan, setLastSan] = useState<string | undefined>(undefined);
+  const [lastMoveFrom, setLastMoveFrom] = useState<string | undefined>(undefined);
+  const [lastMoveTo, setLastMoveTo] = useState<string | undefined>(undefined);
   const [gameOver, setGameOver] = useState<boolean>(false);
   const [gameResult, setGameResult] = useState<string | undefined>(undefined);
 
@@ -329,7 +333,18 @@ export const useChess = (): UseChessReturn => {
     
     // Get the last move if any
     const history = gameRef.current.history();
+    const verboseHistory = gameRef.current.history({ verbose: true });
     setLastSan(history.length > 0 ? history[history.length - 1] : undefined);
+    
+    // Set last move from/to squares if available
+    if (verboseHistory.length > 0) {
+      const lastMove = verboseHistory[verboseHistory.length - 1];
+      setLastMoveFrom(lastMove.from);
+      setLastMoveTo(lastMove.to);
+    } else {
+      setLastMoveFrom(undefined);
+      setLastMoveTo(undefined);
+    }
     
     // Check game over conditions
     const isOver = gameRef.current.isGameOver();
@@ -375,6 +390,8 @@ export const useChess = (): UseChessReturn => {
     // Update UI state (but NOT turn yet - wait for API completion)
     setFen(gameRef.current.fen());
     setLastSan(move.san);
+    setLastMoveFrom(move.from);
+    setLastMoveTo(move.to);
     setHistorySan(gameRef.current.history());
     setGameOver(gameRef.current.isGameOver());
     
@@ -1195,6 +1212,8 @@ export const useChess = (): UseChessReturn => {
     turn,
     historySan,
     lastSan,
+    lastMoveFrom,
+    lastMoveTo,
     gameOver,
     gameResult,
     // AI game mode state
@@ -1232,6 +1251,8 @@ export const useChess = (): UseChessReturn => {
     turn,
     historySan,
     lastSan,
+    lastMoveFrom,
+    lastMoveTo,
     gameOver,
     gameResult,
     isAiMode,

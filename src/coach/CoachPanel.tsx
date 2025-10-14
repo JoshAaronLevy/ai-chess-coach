@@ -12,6 +12,8 @@ import { HintModal } from './HintModal';
 
 interface CoachPanelProps {
   lastSan?: string;
+  lastMoveFrom?: string;
+  lastMoveTo?: string;
   gameOver?: boolean;
   gameResult?: string;
   // Coach insights props
@@ -32,6 +34,8 @@ const getGradeColor = (grade: string): 'success' | 'info' | 'warning' | 'danger'
 
 export const CoachPanel: React.FC<CoachPanelProps> = ({
   lastSan,
+  lastMoveFrom,
+  lastMoveTo,
   gameOver,
   gameResult,
   insights,
@@ -127,10 +131,25 @@ export const CoachPanel: React.FC<CoachPanelProps> = ({
         <div>
           <div className="flex align-items-center gap-2 mb-2">
             <i className="pi pi-arrow-right text-primary" />
-            <span className="font-medium">Last Move</span>
+            <span className="font-medium">
+              Last Move
+              {insights?.lastMove?.grade && (
+                <>
+                  {' - '}
+                  <Tag
+                    value={insights.lastMove.grade}
+                    severity={getGradeColor(insights.lastMove.grade)}
+                    className="font-bold ml-1"
+                  />
+                </>
+              )}
+            </span>
           </div>
           <div className="ml-4 text-700">
-            {lastSan ?? '—'}
+            {lastMoveFrom && lastMoveTo
+              ? `${lastMoveFrom} → ${lastMoveTo}`
+              : lastSan ?? '—'
+            }
           </div>
         </div>
 
@@ -156,27 +175,6 @@ export const CoachPanel: React.FC<CoachPanelProps> = ({
         {/* Insights Content */}
         {!isLoadingInsights && (
           <>
-            {/* Grade Section */}
-            <div>
-              <div className="flex align-items-center gap-2 mb-2">
-                <i className="pi pi-star text-primary" />
-                <span className="font-medium">Grade</span>
-              </div>
-              <div className="ml-4">
-                {insights?.lastMove?.grade ? (
-                  <Tag
-                    value={insights.lastMove.grade}
-                    severity={getGradeColor(insights.lastMove.grade)}
-                    className="font-bold"
-                  />
-                ) : (
-                  <span className="text-700">—</span>
-                )}
-              </div>
-            </div>
-
-            <Divider />
-
             {/* Explanation Section */}
             <div>
               <div className="flex align-items-center gap-2 mb-2">
