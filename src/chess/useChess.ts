@@ -6,7 +6,7 @@ import type { LegalMoveDetailed, PieceType, MoveInsights } from '../types/chess.
 import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
-import { applyUciMove } from '../utils/uciUtils.js';
+import { applyUciMove } from '../utils/uci.js';
 import { useAiDifficultyStore } from '../store/aiDifficultyStore';
 
 console.info('[USE_CHESS_INIT]');
