@@ -8,6 +8,7 @@ import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
 import { applyUciMove } from '../utils/uci.js';
 import { useAiDifficultyStore } from '../store/aiDifficultyStore';
+import { BoardStateManager } from '../services/BoardStateManager.js';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -150,19 +151,6 @@ interface ChessGameState {
 }
 
 /**
- * Interface for saved game data
- */
-interface SavedGameData {
-  id: string;
-  timestamp: number;
-  fen: string;
-  historySan: string[];
-  isAiMode: boolean;
-  moveCount: number;
-  currentTurn: 'w' | 'b';
-}
-
-/**
  * Interface for the useChess hook return value
  */
 interface UseChessReturn extends ChessGameState {
@@ -239,32 +227,10 @@ export const useChess = (): UseChessReturn => {
    * Check if any saved game exists in localStorage
    */
   const checkHasSavedGame = useCallback((): boolean => {
-    try {
-      // Check localStorage for any saved games
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('acc_saved_game_')) {
-          try {
-            const data = JSON.parse(localStorage.getItem(key) || '{}');
-            if (data.timestamp) {
-              setHasSavedGame(true);
-              return true;
-            }
-          } catch {
-            // Skip invalid entries
-          }
-        }
-      }
-      setHasSavedGame(false);
-      return false;
-    } catch (error) {
-      console.error('[CHECK_SAVED_GAME] Error checking for saved games:', error);
-      setHasSavedGame(false);
-      return false;
-    }
-  }, []);
-
-  // Initialize game log on first mount if no current log exists
+    const hasGames = BoardStateManager.hasSavedGames();
+    setHasSavedGame(hasGames);
+    return hasGames;
+  }, []);  // Initialize game log on first mount if no current log exists
   useEffect(() => {
     if (gameLog.snapshots.length === 0) {
       gameLog.startNew(gameRef.current.fen());
@@ -277,52 +243,14 @@ export const useChess = (): UseChessReturn => {
    * Check if current game state differs from the most recently saved state
    */
   const checkStateDifference = useCallback(() => {
-    try {
-      // Get all saved games from localStorage
-      const allSavedGames: SavedGameData[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('acc_saved_game_')) {
-          try {
-            const data = JSON.parse(localStorage.getItem(key) || '{}');
-            if (data.timestamp) {
-              allSavedGames.push(data);
-            }
-          } catch {
-            // Skip invalid entries
-          }
-        }
-      }
+    const currentState = {
+      fen: gameRef.current.fen(),
+      historySan: [...gameRef.current.history()],
+      isAiMode: isAiMode
+    };
 
-      if (allSavedGames.length === 0) {
-        // No saved games, so current state is always different
-        setIsStateDifferentFromSaved(true);
-        return;
-      }
-
-      // Get the most recent saved game
-      const mostRecentSave = allSavedGames.sort((a, b) => b.timestamp - a.timestamp)[0];
-      
-      // Compare current state with saved state
-      const currentState = {
-        fen: gameRef.current.fen(),
-        historySan: [...gameRef.current.history()],
-        isAiMode: isAiMode
-      };
-
-      const isDifferent = (
-        currentState.fen !== mostRecentSave.fen ||
-        currentState.historySan.length !== mostRecentSave.historySan.length ||
-        currentState.isAiMode !== mostRecentSave.isAiMode ||
-        !currentState.historySan.every((move, index) => move === mostRecentSave.historySan[index])
-      );
-
-      setIsStateDifferentFromSaved(isDifferent);
-    } catch (error) {
-      console.error('[STATE_COMPARISON] Error checking state difference:', error);
-      // On error, assume state is different
-      setIsStateDifferentFromSaved(true);
-    }
+    const isDifferent = BoardStateManager.isStateDifferent(currentState);
+    setIsStateDifferentFromSaved(isDifferent);
   }, [isAiMode]);
 
   /**
@@ -1081,39 +1009,21 @@ export const useChess = (): UseChessReturn => {
    * Returns true if successful, false if failed
    */
   const saveCurrentGame = useCallback((): boolean => {
-    try {
-      if (historySan.length === 0) {
-        console.warn('[SAVE_GAME] Cannot save game with no moves');
-        return false;
-      }
+    const result = BoardStateManager.saveGame(
+      gameRef.current.fen(),
+      historySan,
+      isAiMode
+    );
 
-      const timestamp = Date.now();
-      const savedGameData: SavedGameData = {
-        id: `saved_game_${timestamp}`,
-        timestamp,
-        fen: gameRef.current.fen(),
-        historySan: [...historySan],
-        isAiMode,
-        moveCount: historySan.length,
-        currentTurn: gameRef.current.turn()
-      };
-
-      const storageKey = `acc_saved_game_${timestamp}`;
-      localStorage.setItem(storageKey, JSON.stringify(savedGameData));
-      
-      console.log('[SAVE_GAME] Game saved successfully:', { key: storageKey, data: savedGameData });
-      
+    if (result.success) {
       // Update state difference check after saving
       checkStateDifference();
       
       // Update hasSavedGame state after successful save
       setHasSavedGame(true);
-      
-      return true;
-    } catch (error) {
-      console.error('[SAVE_GAME] Failed to save game:', error);
-      return false;
     }
+
+    return result.success;
   }, [historySan, isAiMode, checkStateDifference]);
 
   /**
@@ -1121,105 +1031,46 @@ export const useChess = (): UseChessReturn => {
    * Returns true if successful, false if failed
    */
   const loadSavedGame = useCallback((): boolean => {
+    // Clear any pending AI state before loading
+    setIsAiThinking(false);
+    setPendingAiMove(null);
+    if (aiMoveTimeout) {
+      clearTimeout(aiMoveTimeout);
+      setAiMoveTimeout(null);
+    }
+
+    // Clear insights before loading new game
+    clearInsights();
+
+    const result = BoardStateManager.loadMostRecentGame();
+
+    if (!result.success || !result.data) {
+      console.warn('[LOAD_GAME]', result.error || 'Failed to load game');
+      return false;
+    }
+
+    const mostRecentSave = result.data;
+
     try {
-      console.log('[LOAD_GAME] Starting load process...');
+      // Load the game state
+      gameRef.current.load(mostRecentSave.fen);
       
-      // Find all saved games from localStorage
-      const allSavedGames: SavedGameData[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('acc_saved_game_')) {
-          try {
-            const data = JSON.parse(localStorage.getItem(key) || '{}');
-            if (data.timestamp && data.fen && data.historySan) {
-              allSavedGames.push(data);
-            }
-          } catch (parseError) {
-            console.warn('[LOAD_GAME] Skipping corrupted save data:', key, parseError);
-          }
-        }
-      }
-
-      if (allSavedGames.length === 0) {
-        console.warn('[LOAD_GAME] No saved games found');
-        return false;
-      }
-
-      // Find the most recent saved game (highest timestamp)
-      const mostRecentSave = allSavedGames.sort((a, b) => b.timestamp - a.timestamp)[0];
-      console.log('[LOAD_GAME] Loading most recent save:', mostRecentSave);
-
-      // Validate the saved game data
-      if (!mostRecentSave.fen || !Array.isArray(mostRecentSave.historySan)) {
-        console.error('[LOAD_GAME] Invalid saved game data structure');
-        return false;
-      }
-
-      // Clear any pending AI state before loading
-      setIsAiThinking(false);
-      setPendingAiMove(null);
-      if (aiMoveTimeout) {
-        clearTimeout(aiMoveTimeout);
-        setAiMoveTimeout(null);
-      }
-
-      // Clear insights before loading new game
-      clearInsights();
-
-      try {
-        // Create a new chess instance to validate the saved state
-        const testGame = new Chess();
-        
-        // Load the FEN position to validate it
-        testGame.load(mostRecentSave.fen);
-        
-        // Validate move history by replaying it
-        const replayGame = new Chess();
-        for (const move of mostRecentSave.historySan) {
-          const moveResult = replayGame.move(move);
-          if (!moveResult) {
-            console.error('[LOAD_GAME] Invalid move in history:', move);
-            return false;
-          }
-        }
-        
-        // Verify the replayed game matches the saved FEN
-        if (replayGame.fen() !== mostRecentSave.fen) {
-          console.error('[LOAD_GAME] Move history does not match saved FEN');
-          return false;
-        }
-
-        // All validation passed, now load the game state
-        gameRef.current.load(mostRecentSave.fen);
-        
-        // Restore AI mode state
-        setIsAiMode(mostRecentSave.isAiMode);
-        
-        // Update all game state to reflect the loaded position
-        updateGameState();
-        
-        // Initialize game log with the loaded state
-        gameLog.resetAll(mostRecentSave.fen);
-        
-        // Clear insights history when loading a saved game
-        setInsightsHistory([]);
-        
-        console.log('[LOAD_GAME] Game loaded successfully:', {
-          fen: mostRecentSave.fen,
-          moveCount: mostRecentSave.historySan.length,
-          isAiMode: mostRecentSave.isAiMode,
-          currentTurn: mostRecentSave.currentTurn
-        });
-        
-        return true;
-        
-      } catch (chessError) {
-        console.error('[LOAD_GAME] Chess.js error loading saved state:', chessError);
-        return false;
-      }
+      // Restore AI mode state
+      setIsAiMode(mostRecentSave.isAiMode);
+      
+      // Update all game state to reflect the loaded position
+      updateGameState();
+      
+      // Initialize game log with the loaded state
+      gameLog.resetAll(mostRecentSave.fen);
+      
+      // Clear insights history when loading a saved game
+      setInsightsHistory([]);
+      
+      return true;
       
     } catch (error) {
-      console.error('[LOAD_GAME] Failed to load saved game:', error);
+      console.error('[LOAD_GAME] Error applying loaded game state:', error);
       return false;
     }
   }, [updateGameState, gameLog, clearInsights, aiMoveTimeout]);
