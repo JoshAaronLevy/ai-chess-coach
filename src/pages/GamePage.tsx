@@ -8,8 +8,6 @@ import { useSectionModals } from '../hooks/useSectionModals';
 import { SectionButtons } from '../app/components/SectionButtons';
 import { SectionModal } from '../app/components/modals/SectionModal';
 import { CoachModalContent } from '../app/components/modals/CoachModalContent';
-import { GameLogModalContent } from '../app/components/modals/GameLogModalContent';
-import { MoveListModalContent } from '../app/components/modals/MoveListModalContent';
 import { DifficultyModal } from '../app/components/modals/DifficultyModal';
 import { useAiDifficultyStore, type AiDifficulty } from '../store/aiDifficultyStore';
 import '../App.css';
@@ -29,6 +27,7 @@ export function GamePage() {
     undo,
     reset,
     insights,
+    insightsHistory,
     hasNewInsights,
     isLoadingInsights,
     markInsightsAsViewed,
@@ -248,6 +247,13 @@ export function GamePage() {
             </Button>
           </div>
 
+          {/* Section Buttons */}
+          <SectionButtons
+            onOpenCoach={() => openModal('coach')}
+            hasNewInsights={hasNewInsights}
+            moveCount={historySan.length}
+          />
+
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
             <Button
@@ -294,19 +300,8 @@ export function GamePage() {
               title="Undo the last move"
             />
           </div>
-
-          {/* Section Buttons */}
-          <SectionButtons
-            onOpenCoach={() => openModal('coach')}
-            onOpenGameLog={() => openModal('gamelog')}
-            onOpenMoveList={() => openModal('movelist')}
-            hasNewInsights={hasNewInsights}
-            moveCount={historySan.length}
-          />
         </div>
       </div>
-
-      {/* Section Modals */}
       
       {/* Coach Feedback Modal */}
       <SectionModal
@@ -323,33 +318,12 @@ export function GamePage() {
           gameOver={gameOver}
           gameResult={gameResult}
           insights={insights}
+          insightsHistory={insightsHistory}
           hasNewInsights={hasNewInsights}
           isLoadingInsights={isLoadingInsights}
           onMarkInsightsViewed={markInsightsAsViewed}
         />
       </SectionModal>
-
-      {/* Game Log Modal */}
-      <SectionModal
-        visible={isModalOpen('gamelog')}
-        onHide={closeModal}
-        sectionType="gamelog"
-        title="Game Log Debug"
-        size="medium"
-      >
-        <GameLogModalContent />
-      </SectionModal>
-
-      {/* Move History Modal */}
-      <SectionModal
-        visible={isModalOpen('movelist')}
-        onHide={closeModal}
-        sectionType="movelist"
-        title="Move History"
-        size="small"
-      >
-        <MoveListModalContent history={historySan} />
-        </SectionModal>
   
         {/* AI Difficulty Modal */}
         <DifficultyModal />

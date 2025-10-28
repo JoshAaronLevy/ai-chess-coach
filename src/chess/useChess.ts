@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import { useGameLog } from './useGameLog.js';
 import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from './serializers.js';
-import type { LegalMoveDetailed, PieceType } from '../types/chess.js';
+import type { LegalMoveDetailed, PieceType, MoveInsights } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
 import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
@@ -172,6 +172,7 @@ interface UseChessReturn extends ChessGameState {
   isGameOver: () => boolean;
   // Coach insights state
   insights: TutorInsights | null;
+  insightsHistory: MoveInsights[];
   hasNewInsights: boolean;
   isLoadingInsights: boolean;
   insightsError: string | null;
@@ -218,6 +219,7 @@ export const useChess = (): UseChessReturn => {
 
   // Coach insights state
   const [insights, setInsights] = useState<TutorInsights | null>(null);
+  const [insightsHistory, setInsightsHistory] = useState<MoveInsights[]>([]);
   const [hasNewInsights, setHasNewInsights] = useState<boolean>(false);
   const [isLoadingInsights, setIsLoadingInsights] = useState<boolean>(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
@@ -492,6 +494,17 @@ export const useChess = (): UseChessReturn => {
           setHasNewInsights(true);
           setInsightsError(null);
           
+          // Create and add move insight to history
+          const moveInsight: MoveInsights = {
+            moveNumber: historySan.length, // Current move count after the move
+            san: lastSan || '',
+            fromSquare: lastMoveFrom || '',
+            toSquare: lastMoveTo || '',
+            insights: parsedInsights,
+            timestamp: Date.now()
+          };
+          setInsightsHistory(prev => [...prev, moveInsight]);
+          
           // Update turn state now that API call completed successfully
           setTurn(gameRef.current.turn());
           console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', gameRef.current.turn());
@@ -708,6 +721,8 @@ export const useChess = (): UseChessReturn => {
     if (undoMove) {
       updateGameState();
       gameLog.undoLast();
+      // Remove last insight from history when undoing a move
+      setInsightsHistory(prev => prev.slice(0, -1));
       
       // Enhanced board state logging after undo
       const currentPieces = boardToPieces(gameRef.current);
@@ -771,6 +786,7 @@ export const useChess = (): UseChessReturn => {
     updateGameState();
     gameLog.resetAll(gameRef.current.fen());
     clearInsights(); // Clear insights when starting a new game
+    setInsightsHistory([]); // Clear insights history when starting a new game
     
     // Re-check for saved games after reset
     checkHasSavedGame();
@@ -1185,6 +1201,9 @@ export const useChess = (): UseChessReturn => {
         // Initialize game log with the loaded state
         gameLog.resetAll(mostRecentSave.fen);
         
+        // Clear insights history when loading a saved game
+        setInsightsHistory([]);
+        
         console.log('[LOAD_GAME] Game loaded successfully:', {
           fen: mostRecentSave.fen,
           moveCount: mostRecentSave.historySan.length,
@@ -1223,6 +1242,7 @@ export const useChess = (): UseChessReturn => {
     pendingAiMove,
     // Coach insights state
     insights,
+    insightsHistory,
     hasNewInsights,
     isLoadingInsights,
     insightsError,
@@ -1260,6 +1280,7 @@ export const useChess = (): UseChessReturn => {
     aiColor,
     pendingAiMove,
     insights,
+    insightsHistory,
     hasNewInsights,
     isLoadingInsights,
     insightsError,

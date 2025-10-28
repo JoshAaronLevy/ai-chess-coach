@@ -6,6 +6,7 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
 import type { TutorInsights } from '../../../utils/difyParser';
+import type { MoveInsights } from '../../../types/chess';
 import { HintModal } from '../../../coach/HintModal';
 
 interface CoachModalContentProps {
@@ -16,6 +17,7 @@ interface CoachModalContentProps {
   gameResult?: string;
   // Coach insights props
   insights: TutorInsights | null;
+  insightsHistory?: MoveInsights[];
   hasNewInsights: boolean;
   isLoadingInsights: boolean;
   onMarkInsightsViewed: () => void;
@@ -37,11 +39,12 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   gameOver,
   gameResult,
   insights,
+  insightsHistory,
   hasNewInsights,
   isLoadingInsights,
   onMarkInsightsViewed
 }) => {
-  const [expandedExplanation, setExpandedExplanation] = useState(false);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hasViewedPanel, setHasViewedPanel] = useState(false);
   const [showHintModal, setShowHintModal] = useState(false);
 
@@ -64,71 +67,60 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
     }
   }, [hasNewInsights]);
 
-  // Helper function to truncate explanation
-  const renderExplanation = (explanation: string | null) => {
-    if (!explanation) return '—';
-    
-    const shouldTruncate = explanation.length > 150;
-    const displayText = shouldTruncate && !expandedExplanation
-      ? explanation.substring(0, 150) + '...'
-      : explanation;
+  // Helper function to render move suggestions for a specific move
+  const renderMoveSuggestions = (moveInsights: TutorInsights) => {
+    if (!moveInsights.next_moves ||
+        !Object.values(moveInsights.next_moves).some(move => move?.uci || move?.san)) {
+      return null;
+    }
 
     return (
-      <div>
-        <div
-          id="explanation-content"
-          className="text-700 line-height-3 mb-2"
-          role="region"
-          aria-live="polite"
+      <Accordion className="w-full mt-3">
+        <AccordionTab
+          header={
+            <div className="flex align-items-center gap-2">
+              <i className="pi pi-lightbulb text-primary" />
+              <span className="font-medium">See Move Suggestions</span>
+            </div>
+          }
         >
-          {displayText}
-        </div>
-        {shouldTruncate && (
-          <Button
-            label={expandedExplanation ? 'Show less' : 'Show more'}
-            text
-            size="small"
-            className="p-0 text-primary"
-            onClick={() => setExpandedExplanation(!expandedExplanation)}
-            aria-expanded={expandedExplanation}
-            aria-controls="explanation-content"
-            aria-label={`${expandedExplanation ? 'Collapse' : 'Expand'} detailed explanation`}
-          />
-        )}
-      </div>
+          <div className="text-700 line-height-3 p-2" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+            <div className="flex flex-column gap-2">
+              {moveInsights.next_moves.advanced?.uci || moveInsights.next_moves.advanced?.san ? (
+                <div>
+                  <span className="font-semibold text-800">Advanced: </span>
+                  <span className="font-medium">
+                    {moveInsights.next_moves.advanced.san || moveInsights.next_moves.advanced.uci}
+                  </span>
+                </div>
+              ) : null}
+              
+              {moveInsights.next_moves.intermediate?.uci || moveInsights.next_moves.intermediate?.san ? (
+                <div>
+                  <span className="font-semibold text-800">Intermediate: </span>
+                  <span className="font-medium">
+                    {moveInsights.next_moves.intermediate.san || moveInsights.next_moves.intermediate.uci}
+                  </span>
+                </div>
+              ) : null}
+              
+              {moveInsights.next_moves.beginner?.uci || moveInsights.next_moves.beginner?.san ? (
+                <div>
+                  <span className="font-semibold text-800">Beginner: </span>
+                  <span className="font-medium">
+                    {moveInsights.next_moves.beginner.san || moveInsights.next_moves.beginner.uci}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </AccordionTab>
+      </Accordion>
     );
   };
 
   return (
     <div className="flex flex-column gap-3">
-      {/* Last Move Section */}
-      <div>
-        <div className="flex align-items-center gap-2 mb-2">
-          <i className="pi pi-arrow-right text-primary" />
-          <span className="font-medium">
-            Last Move
-            {insights?.lastMove?.grade && (
-              <>
-                {' - '}
-                <Tag
-                  value={insights.lastMove.grade}
-                  severity={getGradeColor(insights.lastMove.grade)}
-                  className="font-bold ml-1"
-                />
-              </>
-            )}
-          </span>
-        </div>
-        <div className="ml-4 text-700">
-          {lastMoveFrom && lastMoveTo
-            ? `${lastMoveFrom} → ${lastMoveTo}`
-            : lastSan ?? '—'
-          }
-        </div>
-      </div>
-
-      <Divider />
-
       {/* Loading State */}
       {isLoadingInsights && (
         <div
@@ -146,103 +138,65 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
         </div>
       )}
 
-      {/* Insights Content */}
+      {/* Move History Accordion */}
       {!isLoadingInsights && (
         <>
-          {/* Explanation Section */}
-          <div>
-            <div className="flex align-items-center gap-2 mb-2">
-              <i className="pi pi-lightbulb text-primary" />
-              <span className="font-medium">Explanation</span>
-            </div>
-            <div className="ml-4">
-              {insights?.lastMove?.explanation ? (
-                renderExplanation(insights.lastMove.explanation)
-              ) : insights ? (
-                <span className="text-700">No explanation provided</span>
-              ) : (
-                <span className="text-600 italic">Coach analysis will appear here after your move</span>
-              )}
-            </div>
-          </div>
-
-          {/* Confidence Section */}
-          {insights?.confidence !== null && insights?.confidence !== undefined && (
-            <>
-              <Divider />
-              <div>
-                <div className="flex align-items-center gap-2 mb-2">
-                  <i className="pi pi-chart-bar text-primary" />
-                  <span className="font-medium">Model Confidence</span>
-                </div>
-                <div className="ml-4">
-                  <div className="flex align-items-center gap-2">
-                    <ProgressBar
-                      value={Math.round(insights.confidence * 100)}
-                      className="flex-1"
-                      style={{ height: '12px' }}
-                    />
-                    <span className="text-sm text-700 font-medium">
-                      {Math.round(insights.confidence * 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Move Suggestions Section - Collapsible */}
-          {insights?.next_moves &&
-           Object.values(insights.next_moves).some(move => move?.uci || move?.san) && (
-            <>
-              <Divider />
-              <div>
-                <Accordion className="w-full">
+          {insightsHistory && insightsHistory.length > 0 ? (
+            <Accordion
+              activeIndex={activeIndex}
+              onTabChange={(e) => setActiveIndex(e.index as number)}
+              className="w-full"
+            >
+              {insightsHistory.slice().reverse().map((moveInsight, index) => {
+                const moveNumber = moveInsight.moveNumber;
+                const grade = moveInsight.insights.lastMove?.grade || '';
+                const isWhiteMove = moveNumber % 2 === 1; // Odd = white, even = black
+                
+                // Header styling
+                const headerStyle = {
+                  backgroundColor: isWhiteMove ? '#ffffff' : '#2d2d2d',
+                  color: isWhiteMove ? '#000000' : '#ffffff',
+                };
+                
+                return (
                   <AccordionTab
-                    header={
-                      <div className="flex align-items-center gap-2">
-                        <i className="pi pi-lightbulb text-primary" />
-                        <span className="font-medium">See Move Suggestions</span>
-                      </div>
-                    }
+                    key={moveInsight.timestamp}
+                    header={`Move ${moveNumber} - ${grade}`}
+                    headerClassName="font-semibold"
+                    headerStyle={headerStyle}
                   >
-                    <div className="text-700 line-height-3 p-2">
-                      <div className="flex flex-column gap-2">
-                        {insights.next_moves.advanced?.uci || insights.next_moves.advanced?.san ? (
-                          <div>
-                            <span className="font-semibold text-800">Advanced: </span>
-                            <span className="font-medium">
-                              {insights.next_moves.advanced.san || insights.next_moves.advanced.uci}
-                            </span>
-                          </div>
-                        ) : null}
-                        
-                        {insights.next_moves.intermediate?.uci || insights.next_moves.intermediate?.san ? (
-                          <div>
-                            <span className="font-semibold text-800">Intermediate: </span>
-                            <span className="font-medium">
-                              {insights.next_moves.intermediate.san || insights.next_moves.intermediate.uci}
-                            </span>
-                          </div>
-                        ) : null}
-                        
-                        {insights.next_moves.beginner?.uci || insights.next_moves.beginner?.san ? (
-                          <div>
-                            <span className="font-semibold text-800">Beginner: </span>
-                            <span className="font-medium">
-                              {insights.next_moves.beginner.san || insights.next_moves.beginner.uci}
-                            </span>
-                          </div>
-                        ) : null}
+                    <div className="p-3" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                      {/* Move notation */}
+                      <div className="mb-3">
+                        <span className="font-medium">Move: </span>
+                        <span className="text-700">
+                          {moveInsight.fromSquare} → {moveInsight.toSquare}
+                        </span>
+                        <span className="text-500 ml-2">({moveInsight.san})</span>
                       </div>
+                      
+                      {/* Full explanation */}
+                      <div className="mb-3">
+                        <span className="font-medium">Explanation: </span>
+                        <div className="text-700 line-height-3 mt-1">
+                          {moveInsight.insights.lastMove?.explanation || 'No explanation provided'}
+                        </div>
+                      </div>
+                      
+                      {/* Move suggestions for this specific move */}
+                      {renderMoveSuggestions(moveInsight.insights)}
                     </div>
                   </AccordionTab>
-                </Accordion>
-              </div>
-            </>
+                );
+              })}
+            </Accordion>
+          ) : (
+            <div className="text-center p-4 text-600">
+              No coach feedback available yet. Make a move to receive coaching insights.
+            </div>
           )}
 
-          {/* Show Hint Button */}
+          {/* Show Hint Button - for the latest insights */}
           {insights && (insights.bestMove || (insights.alternatives && insights.alternatives.length > 0)) && (
             <>
               <Divider />
