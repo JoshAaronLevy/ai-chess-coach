@@ -281,20 +281,21 @@ export const useChess = (): UseChessReturn => {
    */
   const onPieceDrop = useCallback((from: string, to: string): boolean => {
     // IMPORTANT: must be sync and return boolean
-    const move = gameEngineRef.current.getChessInstance().move({ from, to, promotion: 'q' }); // promotion default is fine
-    console.log('[DROP]', { from, to, move, fen: gameEngineRef.current.getChessInstance().fen() });
+    const game = gameEngineRef.current.getChessInstance();
+    const move = game.move({ from, to, promotion: 'q' }); // promotion default is fine
+    console.log('[DROP]', { from, to, move, fen: game.fen() });
     if (move == null) return false;
     
     // DEBUG: Log turn state before move
-    console.log('[TURN_DEBUG] Before move - Chess.js turn:', gameEngineRef.current.getChessInstance().turn(), 'React turn state:', turn);
+    console.log('[TURN_DEBUG] Before move - Chess.js turn:', game.turn(), 'React turn state:', turn);
     
     // Update UI state (but NOT turn yet - wait for API completion)
-    setFen(gameEngineRef.current.getChessInstance().fen());
+    setFen(game.fen());
     setLastSan(move.san);
     setLastMoveFrom(move.from);
     setLastMoveTo(move.to);
-    setHistorySan(gameEngineRef.current.getChessInstance().history());
-    setGameOver(gameEngineRef.current.getChessInstance().isGameOver());
+    setHistorySan(game.history());
+    setGameOver(game.isGameOver());
     
     // Update game state to trigger save button state check
     updateGameState();
@@ -303,10 +304,10 @@ export const useChess = (): UseChessReturn => {
     console.log('[TURN_DEBUG] Move applied, waiting for API completion to update turn display');
     
     // Record move in game log
-    gameLog.recordAfterMove(gameEngineRef.current.getChessInstance(), move);
+    gameLog.recordAfterMove(game, move);
     
     // Comprehensive board state logging for LLM analysis
-    const currentPieces = boardToPieces(gameEngineRef.current.getChessInstance());
+    const currentPieces = boardToPieces(game);
     const materialCount = countMaterial(currentPieces);
     
     // Calculate captured pieces by comparing to starting position
@@ -321,20 +322,20 @@ export const useChess = (): UseChessReturn => {
     
     const boardState = {
       pieces: currentPieces,
-      fen: gameEngineRef.current.getChessInstance().fen(),
-      turn: gameEngineRef.current.getChessInstance().turn(),
-      moveNumber: gameEngineRef.current.getChessInstance().moveNumber(),
-      halfmoveClock: gameEngineRef.current.getChessInstance().fen().split(' ')[4], // Extract halfmove clock from FEN
-      fullmoveNumber: gameEngineRef.current.getChessInstance().fen().split(' ')[5], // Extract fullmove number from FEN
-      inCheck: gameEngineRef.current.getChessInstance().inCheck(),
-      gameOver: gameEngineRef.current.getChessInstance().isGameOver(),
-      checkmate: gameEngineRef.current.getChessInstance().isCheckmate(),
-      stalemate: gameEngineRef.current.getChessInstance().isStalemate(),
-      draw: gameEngineRef.current.getChessInstance().isDraw(),
-      threefoldRepetition: gameEngineRef.current.getChessInstance().isThreefoldRepetition(),
-      insufficientMaterial: gameEngineRef.current.getChessInstance().isInsufficientMaterial(),
-      positionId: computePositionId(gameEngineRef.current.getChessInstance().fen(), gameEngineRef.current.getChessInstance().turn()),
-      legalMovesDetailed: computeLegalMovesDetailed(gameEngineRef.current.getChessInstance())
+      fen: game.fen(),
+      turn: game.turn(),
+      moveNumber: game.moveNumber(),
+      halfmoveClock: game.fen().split(' ')[4], // Extract halfmove clock from FEN
+      fullmoveNumber: game.fen().split(' ')[5], // Extract fullmove number from FEN
+      inCheck: game.inCheck(),
+      gameOver: game.isGameOver(),
+      checkmate: game.isCheckmate(),
+      stalemate: game.isStalemate(),
+      draw: game.isDraw(),
+      threefoldRepetition: game.isThreefoldRepetition(),
+      insufficientMaterial: game.isInsufficientMaterial(),
+      positionId: computePositionId(game.fen(), game.turn()),
+      legalMovesDetailed: computeLegalMovesDetailed(game)
     };
 
     const payload = {
@@ -353,15 +354,15 @@ export const useChess = (): UseChessReturn => {
       materialCount,
       capturedPieces,
       moveHistory: {
-        san: gameEngineRef.current.getChessInstance().history(),
-        uci: gameEngineRef.current.getChessInstance().history({ verbose: true }).map(m => toMoveInfo(m).uci),
-        totalMoves: gameEngineRef.current.getChessInstance().history().length,
-        currentPly: gameEngineRef.current.getChessInstance().history().length
+        san: game.history(),
+        uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+        totalMoves: game.history().length,
+        currentPly: game.history().length
       },
       gameAnalysis: {
-        legalMoves: gameEngineRef.current.getChessInstance().moves(),
-        legalMovesCount: gameEngineRef.current.getChessInstance().moves().length,
-        attackedSquares: gameEngineRef.current.getChessInstance().moves({ verbose: true }).map(m => m.to),
+        legalMoves: game.moves(),
+        legalMovesCount: game.moves().length,
+        attackedSquares: game.moves({ verbose: true }).map(m => m.to),
         kingSquares: {
           white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
           black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
@@ -378,7 +379,7 @@ export const useChess = (): UseChessReturn => {
     setInsightsError(null);
     
     // Set AI thinking state before API call when in AI mode
-    if (isAiMode && gameEngineRef.current.getChessInstance().turn() === aiColor) {
+    if (isAiMode && game.turn() === aiColor) {
       setIsAiThinking(true);
     }
     
@@ -405,20 +406,20 @@ export const useChess = (): UseChessReturn => {
           setInsightsHistory(prev => [...prev, moveInsight]);
           
           // Update turn state now that API call completed successfully
-          setTurn(gameEngineRef.current.getChessInstance().turn());
-          console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', gameEngineRef.current.getChessInstance().turn());
+          setTurn(game.turn());
+          console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', game.turn());
           
           // Enhanced AI move validation and side checking with difficulty-based selection
-          if (isAiMode && gameEngineRef.current.getChessInstance().turn() === aiColor && !gameEngineRef.current.getChessInstance().isGameOver()) {
+          if (isAiMode && game.turn() === aiColor && !game.isGameOver()) {
             console.log('[AI Auto-Move]', {
-              turn: gameEngineRef.current.getChessInstance().turn(),
+              turn: game.turn(),
               aiColor,
               difficulty: difficulty,
-              gameOver: gameEngineRef.current.getChessInstance().isGameOver()
+              gameOver: game.isGameOver()
             });
             
             // Validate that the move is for the correct side
-            const expectedSide = gameEngineRef.current.getChessInstance().turn(); // Should be 'b' for AI
+            const expectedSide = game.turn(); // Should be 'b' for AI
             if (expectedSide !== aiColor) {
               console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
               setIsAiThinking(false);
@@ -426,7 +427,7 @@ export const useChess = (): UseChessReturn => {
             }
             
             // Double-check game state before proceeding
-            if (gameEngineRef.current.getChessInstance().isGameOver()) {
+            if (game.isGameOver()) {
               console.log('[AI] Game ended before AI could move');
               setIsAiThinking(false);
               return;
@@ -444,7 +445,7 @@ export const useChess = (): UseChessReturn => {
               const moveSelection = pickAiMoveForDifficulty(difficulty, parsedInsights.next_moves);
               if (moveSelection) {
                 // Try to apply the selected move
-                const moveResult = applyUciOrSan(gameEngineRef.current.getChessInstance(), moveSelection.move);
+                const moveResult = applyUciOrSan(game, moveSelection.move);
                 if (moveResult) {
                   console.log('[AI Move Selected]', {
                     difficulty,
@@ -459,7 +460,7 @@ export const useChess = (): UseChessReturn => {
                   };
                   
                   // Undo the test move and let handleAiMoveResponse apply it properly
-                  gameEngineRef.current.getChessInstance().undo();
+                  game.undo();
                   handleAiMoveResponse(aiMove);
                 } else {
                   console.warn('[AI] Selected difficulty-based move is illegal, trying fallback to bestMove');
@@ -505,13 +506,13 @@ export const useChess = (): UseChessReturn => {
           setInsightsError(null);
           
           // Update turn state even if parsed from error response
-          setTurn(gameEngineRef.current.getChessInstance().turn());
-          console.log('[TURN_DEBUG] API call failed but insights parsed - Turn updated to:', gameEngineRef.current.getChessInstance().turn());
+          setTurn(game.turn());
+          console.log('[TURN_DEBUG] API call failed but insights parsed - Turn updated to:', game.turn());
           
           // Enhanced AI move validation and side checking with difficulty-based selection (error case)
-          if (isAiMode && gameEngineRef.current.getChessInstance().turn() === aiColor && !gameEngineRef.current.getChessInstance().isGameOver()) {
+          if (isAiMode && game.turn() === aiColor && !game.isGameOver()) {
             // Validate that the move is for the correct side
-            const expectedSide = gameEngineRef.current.getChessInstance().turn(); // Should be 'b' for AI
+            const expectedSide = game.turn(); // Should be 'b' for AI
             if (expectedSide !== aiColor) {
               console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
               setIsAiThinking(false);
@@ -519,7 +520,7 @@ export const useChess = (): UseChessReturn => {
             }
             
             // Double-check game state before proceeding
-            if (gameEngineRef.current.getChessInstance().isGameOver()) {
+            if (game.isGameOver()) {
               console.log('[AI] Game ended before AI could move');
               setIsAiThinking(false);
               return;
@@ -534,7 +535,7 @@ export const useChess = (): UseChessReturn => {
               if (moveSelection) {
                 console.log('[DEBUG] Attempting to apply selected move:', moveSelection.move);
                 // Try to apply the selected move
-                const moveResult = applyUciOrSan(gameEngineRef.current.getChessInstance(), moveSelection.move);
+                const moveResult = applyUciOrSan(game, moveSelection.move);
                 console.log('[DEBUG] applyUciOrSan result:', moveResult);
                 
                 if (moveResult) {
@@ -548,7 +549,7 @@ export const useChess = (): UseChessReturn => {
                   
                   console.log('[DEBUG] Converted aiMove for handleAiMoveResponse:', aiMove);
                   // Undo the test move and let handleAiMoveResponse apply it properly
-                  gameEngineRef.current.getChessInstance().undo();
+                  game.undo();
                   handleAiMoveResponse(aiMove);
                 } else {
                   console.warn('[AI] Selected difficulty-based move is illegal, trying fallback to bestMove');
@@ -584,8 +585,8 @@ export const useChess = (): UseChessReturn => {
           setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
           
           // Update turn state even on complete API failure
-          setTurn(gameEngineRef.current.getChessInstance().turn());
-          console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', gameEngineRef.current.getChessInstance().turn());
+          setTurn(game.turn());
+          console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', game.turn());
           
           // Enhanced AI-specific error cleanup
           if (isAiMode) {
@@ -624,7 +625,8 @@ export const useChess = (): UseChessReturn => {
       setInsightsHistory(prev => prev.slice(0, -1));
       
       // Enhanced board state logging after undo
-      const currentPieces = boardToPieces(gameEngineRef.current.getChessInstance());
+      const game = gameEngineRef.current.getChessInstance();
+      const currentPieces = boardToPieces(game);
       const materialCount = countMaterial(currentPieces);
       
       const startingMaterial = {
@@ -635,20 +637,20 @@ export const useChess = (): UseChessReturn => {
       
       const boardState = {
         pieces: currentPieces,
-        fen: gameEngineRef.current.getChessInstance().fen(),
-        turn: gameEngineRef.current.getChessInstance().turn(),
-        moveNumber: gameEngineRef.current.getChessInstance().moveNumber(),
-        halfmoveClock: gameEngineRef.current.getChessInstance().fen().split(' ')[4],
-        fullmoveNumber: gameEngineRef.current.getChessInstance().fen().split(' ')[5],
-        inCheck: gameEngineRef.current.getChessInstance().inCheck(),
-        gameOver: gameEngineRef.current.getChessInstance().isGameOver(),
-        checkmate: gameEngineRef.current.getChessInstance().isCheckmate(),
-        stalemate: gameEngineRef.current.getChessInstance().isStalemate(),
-        draw: gameEngineRef.current.getChessInstance().isDraw(),
-        threefoldRepetition: gameEngineRef.current.getChessInstance().isThreefoldRepetition(),
-        insufficientMaterial: gameEngineRef.current.getChessInstance().isInsufficientMaterial(),
-        positionId: computePositionId(gameEngineRef.current.getChessInstance().fen(), gameEngineRef.current.getChessInstance().turn()),
-        legalMovesDetailed: computeLegalMovesDetailed(gameEngineRef.current.getChessInstance())
+        fen: game.fen(),
+        turn: game.turn(),
+        moveNumber: game.moveNumber(),
+        halfmoveClock: game.fen().split(' ')[4],
+        fullmoveNumber: game.fen().split(' ')[5],
+        inCheck: game.inCheck(),
+        gameOver: game.isGameOver(),
+        checkmate: game.isCheckmate(),
+        stalemate: game.isStalemate(),
+        draw: game.isDraw(),
+        threefoldRepetition: game.isThreefoldRepetition(),
+        insufficientMaterial: game.isInsufficientMaterial(),
+        positionId: computePositionId(game.fen(), game.turn()),
+        legalMovesDetailed: computeLegalMovesDetailed(game)
       };
 
       console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify({
@@ -656,15 +658,15 @@ export const useChess = (): UseChessReturn => {
         materialCount,
         capturedPieces,
         moveHistory: {
-          san: gameEngineRef.current.getChessInstance().history(),
-          uci: gameEngineRef.current.getChessInstance().history({ verbose: true }).map(m => toMoveInfo(m).uci),
-          totalMoves: gameEngineRef.current.getChessInstance().history().length,
-          currentPly: gameEngineRef.current.getChessInstance().history().length
+          san: game.history(),
+          uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+          totalMoves: game.history().length,
+          currentPly: game.history().length
         },
         gameAnalysis: {
-          legalMoves: gameEngineRef.current.getChessInstance().moves(),
-          legalMovesCount: gameEngineRef.current.getChessInstance().moves().length,
-          attackedSquares: gameEngineRef.current.getChessInstance().moves({ verbose: true }).map(m => m.to),
+          legalMoves: game.moves(),
+          legalMovesCount: game.moves().length,
+          attackedSquares: game.moves({ verbose: true }).map(m => m.to),
           kingSquares: {
             white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
             black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
@@ -704,7 +706,8 @@ export const useChess = (): UseChessReturn => {
     // Note: Don't reset isAiMode so user's preference persists
     
     // Enhanced board state logging after reset
-    const currentPieces = boardToPieces(gameEngineRef.current.getChessInstance());
+    const game = gameEngineRef.current.getChessInstance();
+    const currentPieces = boardToPieces(game);
     const materialCount = countMaterial(currentPieces);
     
     const startingMaterial = {
@@ -715,20 +718,20 @@ export const useChess = (): UseChessReturn => {
     
     const boardState = {
       pieces: currentPieces,
-      fen: gameEngineRef.current.getChessInstance().fen(),
-      turn: gameEngineRef.current.getChessInstance().turn(),
-      moveNumber: gameEngineRef.current.getChessInstance().moveNumber(),
-      halfmoveClock: gameEngineRef.current.getChessInstance().fen().split(' ')[4],
-      fullmoveNumber: gameEngineRef.current.getChessInstance().fen().split(' ')[5],
-      inCheck: gameEngineRef.current.getChessInstance().inCheck(),
-      gameOver: gameEngineRef.current.getChessInstance().isGameOver(),
-      checkmate: gameEngineRef.current.getChessInstance().isCheckmate(),
-      stalemate: gameEngineRef.current.getChessInstance().isStalemate(),
-      draw: gameEngineRef.current.getChessInstance().isDraw(),
-      threefoldRepetition: gameEngineRef.current.getChessInstance().isThreefoldRepetition(),
-      insufficientMaterial: gameEngineRef.current.getChessInstance().isInsufficientMaterial(),
-      positionId: computePositionId(gameEngineRef.current.getChessInstance().fen(), gameEngineRef.current.getChessInstance().turn()),
-      legalMovesDetailed: computeLegalMovesDetailed(gameEngineRef.current.getChessInstance())
+      fen: game.fen(),
+      turn: game.turn(),
+      moveNumber: game.moveNumber(),
+      halfmoveClock: game.fen().split(' ')[4],
+      fullmoveNumber: game.fen().split(' ')[5],
+      inCheck: game.inCheck(),
+      gameOver: game.isGameOver(),
+      checkmate: game.isCheckmate(),
+      stalemate: game.isStalemate(),
+      draw: game.isDraw(),
+      threefoldRepetition: game.isThreefoldRepetition(),
+      insufficientMaterial: game.isInsufficientMaterial(),
+      positionId: computePositionId(game.fen(), game.turn()),
+      legalMovesDetailed: computeLegalMovesDetailed(game)
     };
 
     console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify({
@@ -736,15 +739,15 @@ export const useChess = (): UseChessReturn => {
       materialCount,
       capturedPieces,
       moveHistory: {
-        san: gameEngineRef.current.getChessInstance().history(),
-        uci: gameEngineRef.current.getChessInstance().history({ verbose: true }).map(m => toMoveInfo(m).uci),
-        totalMoves: gameEngineRef.current.getChessInstance().history().length,
-        currentPly: gameEngineRef.current.getChessInstance().history().length
+        san: game.history(),
+        uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+        totalMoves: game.history().length,
+        currentPly: game.history().length
       },
       gameAnalysis: {
-        legalMoves: gameEngineRef.current.getChessInstance().moves(),
-        legalMovesCount: gameEngineRef.current.getChessInstance().moves().length,
-        attackedSquares: gameEngineRef.current.getChessInstance().moves({ verbose: true }).map(m => m.to),
+        legalMoves: game.moves(),
+        legalMovesCount: game.moves().length,
+        attackedSquares: game.moves({ verbose: true }).map(m => m.to),
         kingSquares: {
           white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
           black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
@@ -753,7 +756,7 @@ export const useChess = (): UseChessReturn => {
     }));
 
     console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
-  }, [updateGameState, gameLog]);
+  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]);
 
   /**
    * Check if the game has ended
@@ -828,7 +831,8 @@ export const useChess = (): UseChessReturn => {
    * Handle AI move response with natural delay and timeout protection
    */
   const handleAiMoveResponse = useCallback((bestMove: { uci: string, san: string }) => {
-    if (!isAiMode || gameEngineRef.current.getChessInstance().isGameOver()) {
+    const game = gameEngineRef.current.getChessInstance();
+    if (!isAiMode || game.isGameOver()) {
       return;
     }
 
@@ -850,7 +854,7 @@ export const useChess = (): UseChessReturn => {
     setTimeout(() => {
       executeAiMove(bestMove.uci);
     }, delay);
-  }, [isAiMode]);
+  }, [isAiMode]); // executeAiMove is defined later, called via closure
 
   /**
    * Execute AI move and update game state with race condition protection
@@ -862,15 +866,17 @@ export const useChess = (): UseChessReturn => {
       return false;
     }
 
+    const game = gameEngineRef.current.getChessInstance();
+    
     // Validate game state hasn't changed
-    if (!gameEngineRef.current.getChessInstance() || gameEngineRef.current.getChessInstance().isGameOver()) {
+    if (!game || game.isGameOver()) {
       console.warn('[AI] Cannot execute AI move: game ended or invalid state');
       setIsAiThinking(false);
       return false;
     }
 
     // Validate it's still AI's turn
-    if (gameEngineRef.current.getChessInstance().turn() !== aiColor) {
+    if (game.turn() !== aiColor) {
       console.warn('[AI] Cannot execute AI move: not AI\'s turn');
       setIsAiThinking(false);
       return false;
@@ -879,7 +885,7 @@ export const useChess = (): UseChessReturn => {
     try {
       console.log('[AI] Attempting to execute move:', uciMove);
 
-      const moveResult = applyUciMove(gameEngineRef.current.getChessInstance(), uciMove);
+      const moveResult = applyUciMove(game, uciMove);
       if (!moveResult) {
         console.error('[AI] Invalid UCI move:', uciMove);
         setIsAiThinking(false);
@@ -894,7 +900,7 @@ export const useChess = (): UseChessReturn => {
       
       // Record move in game log if initialized
       if (gameLog.snapshots.length > 0) {
-        gameLog.recordAfterMove(gameEngineRef.current.getChessInstance(), moveResult);
+        gameLog.recordAfterMove(game, moveResult);
       }
       
       // Clear timeout if it exists
@@ -908,13 +914,13 @@ export const useChess = (): UseChessReturn => {
       setPendingAiMove(null);
       
       // Enhanced game over detection after AI move
-      if (gameEngineRef.current.getChessInstance().isGameOver()) {
+      if (game.isGameOver()) {
         console.log('[AI] Game ended after AI move:', {
-          isCheckmate: gameEngineRef.current.getChessInstance().isCheckmate(),
-          isStalemate: gameEngineRef.current.getChessInstance().isStalemate(),
-          isDraw: gameEngineRef.current.getChessInstance().isDraw(),
-          isThreefoldRepetition: gameEngineRef.current.getChessInstance().isThreefoldRepetition(),
-          isInsufficientMaterial: gameEngineRef.current.getChessInstance().isInsufficientMaterial()
+          isCheckmate: game.isCheckmate(),
+          isStalemate: game.isStalemate(),
+          isDraw: game.isDraw(),
+          isThreefoldRepetition: game.isThreefoldRepetition(),
+          isInsufficientMaterial: game.isInsufficientMaterial()
         });
         // No further AI processing needed
         return true;
@@ -923,7 +929,7 @@ export const useChess = (): UseChessReturn => {
       // Call coaching API after AI move to continue analysis cycle
       const moveInfo = toMoveInfo(moveResult);
       const gradeRequest = {
-        chess_position: gameEngineRef.current.getChessInstance().fen(),
+        chess_position: game.fen(),
         previous_move_uci: moveInfo.uci,
         previous_move_san: moveInfo.san
       };
