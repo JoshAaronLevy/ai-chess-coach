@@ -1,5 +1,17 @@
 import { Chess } from 'chess.js';
-import type { SavedGameData, SaveResult, LoadResult, CurrentGameState } from '../types/persistence';
+import type { 
+  SavedGameData,
+  SavedGameMetadata,
+  SaveResult, 
+  LoadResult, 
+  CurrentGameState,
+  StorageStats,
+  ExportResult,
+  ImportResult,
+  SaveOptions,
+  CleanupOptions,
+  CleanupResult
+} from '../types/persistence';
 
 /**
  * BoardStateManager - Service for managing chess game persistence
@@ -19,12 +31,14 @@ export class BoardStateManager {
    * @param fen - Current FEN position
    * @param historySan - Move history in SAN notation
    * @param isAiMode - Whether the game is in AI mode
+   * @param options - Optional save options including metadata
    * @returns SaveResult with success status and storage key or error message
    */
   static saveGame(
     fen: string,
     historySan: string[],
-    isAiMode: boolean
+    isAiMode: boolean,
+    options?: SaveOptions
   ): SaveResult {
     try {
       if (historySan.length === 0) {
@@ -32,6 +46,12 @@ export class BoardStateManager {
           success: false,
           error: 'Cannot save game with no moves'
         };
+      }
+
+      // Check storage quota before saving
+      const stats = this.getStorageStats();
+      if (stats.nearQuota) {
+        console.warn('[BoardStateManager] Storage quota warning: near limit');
       }
 
       const timestamp = Date.now();
@@ -44,15 +64,40 @@ export class BoardStateManager {
         historySan: [...historySan],
         isAiMode,
         moveCount: historySan.length,
-        currentTurn: game.turn()
+        currentTurn: game.turn(),
+        metadata: options?.metadata
       };
 
+      // Validate unless explicitly skipped
+      if (!options?.skipValidation) {
+        const validation = this.validateSavedGame(savedGameData);
+        if (!validation.success) {
+          return {
+            success: false,
+            error: `Validation failed: ${validation.error}`
+          };
+        }
+      }
+
       const storageKey = `${this.STORAGE_KEY_PREFIX}${timestamp}`;
-      localStorage.setItem(storageKey, JSON.stringify(savedGameData));
+      
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(savedGameData));
+      } catch (storageError) {
+        // Handle quota exceeded error
+        if (storageError instanceof Error && storageError.name === 'QuotaExceededError') {
+          return {
+            success: false,
+            error: 'Storage quota exceeded. Please delete old games to free up space.'
+          };
+        }
+        throw storageError;
+      }
       
       console.log('[BoardStateManager] Game saved successfully:', { 
         key: storageKey, 
-        moveCount: savedGameData.moveCount 
+        moveCount: savedGameData.moveCount,
+        hasMetadata: !!savedGameData.metadata
       });
       
       return {
@@ -323,6 +368,340 @@ export class BoardStateManager {
     } catch (error) {
       console.error('[BoardStateManager] Error deleting all saved games:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Get storage usage statistics
+   * 
+   * @returns StorageStats object with detailed usage information
+   */
+  static getStorageStats(): StorageStats {
+    try {
+      let totalUsed = 0;
+      let gamesUsed = 0;
+      let gameCount = 0;
+      let largestGameSize = 0;
+
+      // Calculate total localStorage usage
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) {
+          const value = localStorage.getItem(key) || '';
+          const size = new Blob([value]).size;
+          totalUsed += size;
+
+          if (key.startsWith(this.STORAGE_KEY_PREFIX)) {
+            gamesUsed += size;
+            gameCount++;
+            if (size > largestGameSize) {
+              largestGameSize = size;
+            }
+          }
+        }
+      }
+
+      // Estimate available space (typical limit is 5-10MB, we use 5MB as conservative estimate)
+      const estimatedQuota = 5 * 1024 * 1024; // 5MB in bytes
+      const availableSpace = Math.max(0, estimatedQuota - totalUsed);
+      const nearQuota = totalUsed / estimatedQuota > 0.8; // >80% used
+
+      return {
+        totalUsed,
+        gamesUsed,
+        gameCount,
+        availableSpace,
+        nearQuota,
+        largestGameSize
+      };
+    } catch (error) {
+      console.error('[BoardStateManager] Error calculating storage stats:', error);
+      return {
+        totalUsed: 0,
+        gamesUsed: 0,
+        gameCount: 0,
+        nearQuota: false,
+        largestGameSize: 0
+      };
+    }
+  }
+
+  /**
+   * Export a saved game to JSON string
+   * 
+   * @param gameId - ID of the game to export
+   * @returns ExportResult with JSON data and filename
+   */
+  static exportGame(gameId: string): ExportResult {
+    try {
+      const allGames = this.getAllSavedGames();
+      const game = allGames.find(g => g.id === gameId);
+
+      if (!game) {
+        return {
+          success: false,
+          error: `Game with ID ${gameId} not found`
+        };
+      }
+
+      const data = JSON.stringify(game, null, 2);
+      const timestamp = new Date(game.timestamp).toISOString().split('T')[0];
+      const filename = `chess-game-${timestamp}-${game.moveCount}moves.json`;
+
+      return {
+        success: true,
+        data,
+        filename
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Export all saved games to JSON string
+   * 
+   * @returns ExportResult with JSON array of all games
+   */
+  static exportAllGames(): ExportResult {
+    try {
+      const allGames = this.getAllSavedGames();
+
+      if (allGames.length === 0) {
+        return {
+          success: false,
+          error: 'No saved games to export'
+        };
+      }
+
+      const data = JSON.stringify(allGames, null, 2);
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `chess-games-export-${timestamp}-${allGames.length}games.json`;
+
+      return {
+        success: true,
+        data,
+        filename
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Import games from JSON string
+   * 
+   * @param jsonData - JSON string containing game data (single game or array)
+   * @param overwriteExisting - Whether to overwrite existing games with same ID
+   * @returns ImportResult with count of imported games and any failures
+   */
+  static importGames(jsonData: string, overwriteExisting = false): ImportResult {
+    try {
+      const parsed = JSON.parse(jsonData);
+      const games: SavedGameData[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      let imported = 0;
+      const failed: Array<{ id: string; error: string }> = [];
+
+      for (const game of games) {
+        // Validate game data structure
+        const validation = this.validateSavedGame(game);
+        if (!validation.success) {
+          failed.push({ 
+            id: game.id || 'unknown', 
+            error: validation.error || 'Validation failed' 
+          });
+          continue;
+        }
+
+        // Check if game already exists
+        const storageKey = `${this.STORAGE_KEY_PREFIX}${game.timestamp}`;
+        const exists = localStorage.getItem(storageKey) !== null;
+
+        if (exists && !overwriteExisting) {
+          failed.push({ 
+            id: game.id, 
+            error: 'Game already exists (use overwriteExisting option)' 
+          });
+          continue;
+        }
+
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(game));
+          imported++;
+        } catch (storageError) {
+          failed.push({ 
+            id: game.id, 
+            error: storageError instanceof Error ? storageError.message : 'Storage error' 
+          });
+        }
+      }
+
+      console.log('[BoardStateManager] Import completed:', { imported, failed: failed.length });
+
+      return {
+        success: true,
+        imported,
+        failed: failed.length > 0 ? failed : undefined
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        error: `Import failed: ${errorMessage}`
+      };
+    }
+  }
+
+  /**
+   * Cleanup old saved games based on criteria
+   * 
+   * @param options - Cleanup options (maxSaves, olderThanDays, preserveFavorites, dryRun)
+   * @returns CleanupResult with number deleted and space freed
+   */
+  static cleanupOldGames(options: CleanupOptions = {}): CleanupResult {
+    try {
+      const { maxSaves, olderThanDays, preserveFavorites = true, dryRun = false } = options;
+
+      const allGames = this.getAllSavedGames();
+
+      // Filter games to keep based on criteria
+      const now = Date.now();
+      const cutoffDate = olderThanDays ? now - (olderThanDays * 24 * 60 * 60 * 1000) : 0;
+
+      // Separate favorites if preserving them
+      const favorites = preserveFavorites 
+        ? allGames.filter(g => g.metadata?.isFavorite) 
+        : [];
+      const nonFavorites = preserveFavorites 
+        ? allGames.filter(g => !g.metadata?.isFavorite) 
+        : allGames;
+
+      let gamesToDelete: SavedGameData[] = [];
+
+      // Apply age filter
+      if (cutoffDate > 0) {
+        gamesToDelete = nonFavorites.filter(g => g.timestamp < cutoffDate);
+      }
+
+      // Apply max saves limit (keep most recent N)
+      if (maxSaves && nonFavorites.length > maxSaves) {
+        const sorted = [...nonFavorites].sort((a, b) => b.timestamp - a.timestamp);
+        const toKeep = sorted.slice(0, maxSaves);
+        const toDelete = nonFavorites.filter(g => !toKeep.includes(g));
+        gamesToDelete = [...new Set([...gamesToDelete, ...toDelete])];
+      }
+
+      // Calculate space to be freed
+      let spaceFreed = 0;
+      const deletedIds: string[] = [];
+
+      for (const game of gamesToDelete) {
+        const storageKey = `${this.STORAGE_KEY_PREFIX}${game.timestamp}`;
+        const existingData = localStorage.getItem(storageKey);
+        if (existingData) {
+          spaceFreed += new Blob([existingData]).size;
+          deletedIds.push(game.id);
+
+          if (!dryRun) {
+            localStorage.removeItem(storageKey);
+          }
+        }
+      }
+
+      const deleted = gamesToDelete.length;
+
+      console.log('[BoardStateManager] Cleanup completed:', { 
+        deleted, 
+        spaceFreed, 
+        dryRun,
+        preservedFavorites: favorites.length 
+      });
+
+      return {
+        success: true,
+        deleted,
+        spaceFreed,
+        deletedIds: dryRun ? deletedIds : undefined
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[BoardStateManager] Cleanup failed:', errorMessage);
+      return {
+        success: false,
+        deleted: 0,
+        spaceFreed: 0,
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Update metadata for a saved game
+   * 
+   * @param gameId - ID of the game to update
+   * @param metadata - Metadata to merge with existing metadata
+   * @returns SaveResult indicating success or failure
+   */
+  static updateGameMetadata(gameId: string, metadata: Partial<SavedGameMetadata>): SaveResult {
+    try {
+      const allGames = this.getAllSavedGames();
+      const game = allGames.find(g => g.id === gameId);
+
+      if (!game) {
+        return {
+          success: false,
+          error: `Game with ID ${gameId} not found`
+        };
+      }
+
+      // Merge new metadata with existing
+      game.metadata = {
+        ...game.metadata,
+        ...metadata,
+        lastModified: Date.now()
+      };
+
+      // Save updated game
+      const storageKey = `${this.STORAGE_KEY_PREFIX}${game.timestamp}`;
+      localStorage.setItem(storageKey, JSON.stringify(game));
+
+      console.log('[BoardStateManager] Metadata updated:', { gameId, metadata });
+
+      return {
+        success: true,
+        key: storageKey
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+
+  /**
+   * Check if localStorage is available and writable
+   * 
+   * @returns True if localStorage is available, false otherwise
+   */
+  static isStorageAvailable(): boolean {
+    try {
+      const testKey = '__storage_test__';
+      localStorage.setItem(testKey, 'test');
+      localStorage.removeItem(testKey);
+      return true;
+    } catch {
+      return false;
     }
   }
 }
