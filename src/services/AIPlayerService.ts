@@ -2,6 +2,7 @@ import type { Chess } from 'chess.js';
 import type { TutorInsights } from '../utils/difyParser';
 import type { AiDifficulty } from '../store/aiDifficultyStore';
 import { applyUciMove } from '../utils/uci';
+import { logger } from '../utils/logger';
 
 /**
  * Represents a move with both UCI and SAN notation
@@ -57,8 +58,8 @@ export class AIPlayerService {
     insights: TutorInsights,
     difficulty: AiDifficulty
   ): MoveSelectionResult | null {
-    console.log('[AIPlayerService] Selecting move for difficulty:', difficulty);
-    console.log('[AIPlayerService] Insights:', {
+    logger.info('[AIPlayerService] Selecting move for difficulty:', difficulty);
+    logger.info('[AIPlayerService] Insights:', {
       hasNextMoves: !!insights.next_moves,
       hasBestMove: !!insights.bestMove
     });
@@ -67,14 +68,14 @@ export class AIPlayerService {
     if (insights.next_moves) {
       const result = this.selectFromDifficultyMoves(insights.next_moves, difficulty);
       if (result) {
-        console.log('[AIPlayerService] Selected difficulty-based move:', result);
+        logger.info('[AIPlayerService] Selected difficulty-based move:', result);
         return result;
       }
     }
 
     // Fallback to bestMove
     if (insights.bestMove && this.isValidMove(insights.bestMove)) {
-      console.log('[AIPlayerService] Using bestMove fallback:', insights.bestMove);
+      logger.info('[AIPlayerService] Using bestMove fallback:', insights.bestMove);
       return {
         move: insights.bestMove,
         fallbackUsed: true,
@@ -82,7 +83,7 @@ export class AIPlayerService {
       };
     }
 
-    console.warn('[AIPlayerService] No valid move found in insights');
+    logger.warn('[AIPlayerService] No valid move found in insights');
     return null;
   }
 
@@ -104,7 +105,7 @@ export class AIPlayerService {
     }
 
     // Fallback order: advanced → intermediate → beginner
-    console.log('[AIPlayerService] Primary move not found, trying fallbacks...');
+    logger.info('[AIPlayerService] Primary move not found, trying fallbacks...');
     const fallbackOrder: AiDifficulty[] = ['advanced', 'intermediate', 'beginner'];
     
     for (const fallbackDifficulty of fallbackOrder) {
@@ -112,7 +113,7 @@ export class AIPlayerService {
       
       const move = this.normalizeMove(nextMoves[fallbackDifficulty]);
       if (move) {
-        console.log('[AIPlayerService] Using fallback difficulty:', fallbackDifficulty);
+        logger.info('[AIPlayerService] Using fallback difficulty:', fallbackDifficulty);
         return {
           move,
           fallbackUsed: true,
@@ -162,11 +163,11 @@ export class AIPlayerService {
    * @returns Move result from chess.js, or null if move is invalid
    */
   static executeMove(game: Chess, move: AiMove): ReturnType<typeof applyUciMove> {
-    console.log('[AIPlayerService] Executing move:', move);
+    logger.info('[AIPlayerService] Executing move:', move);
 
     // Validate game state
     if (game.isGameOver()) {
-      console.warn('[AIPlayerService] Cannot execute move: game is over');
+      logger.warn('[AIPlayerService] Cannot execute move: game is over');
       return null;
     }
 
@@ -174,10 +175,10 @@ export class AIPlayerService {
     if (move.uci) {
       const result = applyUciMove(game, move.uci);
       if (result) {
-        console.log('[AIPlayerService] Move executed via UCI:', result);
+        logger.info('[AIPlayerService] Move executed via UCI:', result);
         return result;
       }
-      console.warn('[AIPlayerService] Failed to execute via UCI, trying SAN...');
+      logger.warn('[AIPlayerService] Failed to execute via UCI, trying SAN...');
     }
 
     // Fallback to SAN notation
@@ -185,15 +186,15 @@ export class AIPlayerService {
       try {
         const result = game.move(move.san);
         if (result) {
-          console.log('[AIPlayerService] Move executed via SAN:', result);
+          logger.info('[AIPlayerService] Move executed via SAN:', result);
           return result;
         }
       } catch (error) {
-        console.error('[AIPlayerService] Failed to execute via SAN:', error);
+        logger.error('[AIPlayerService] Failed to execute via SAN:', error);
       }
     }
 
-    console.error('[AIPlayerService] Invalid move:', move);
+    logger.error('[AIPlayerService] Invalid move:', move);
     return null;
   }
 
@@ -220,7 +221,7 @@ export class AIPlayerService {
     const maxDelay = options.maxDelay ?? this.DEFAULT_MAX_DELAY;
     const timeout = options.timeout ?? this.DEFAULT_TIMEOUT;
 
-    console.log('[AIPlayerService] Scheduling move:', {
+    logger.info('[AIPlayerService] Scheduling move:', {
       move,
       delay: `${minDelay}-${maxDelay}ms`,
       timeout: `${timeout}ms`
@@ -231,7 +232,7 @@ export class AIPlayerService {
 
     // Set up timeout protection
     const protectionTimeoutId = window.setTimeout(() => {
-      console.warn('[AIPlayerService] Move execution timed out');
+      logger.warn('[AIPlayerService] Move execution timed out');
       onTimeout();
     }, timeout);
 

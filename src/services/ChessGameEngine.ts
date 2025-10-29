@@ -3,6 +3,7 @@ import { Chess } from 'chess.js';
 import type { LegalMoveDetailed, PieceType } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
 import { ErrorCode, AppError, createInvalidMoveError, createInvalidFenError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 /**
  * Type for chess piece colors
@@ -134,7 +135,7 @@ export class ChessGameEngine {
         fen,
         error instanceof Error ? error.message : undefined
       );
-      console.error('[ChessGameEngine]', fenError.message);
+      logger.error('[ChessGameEngine]', fenError.message);
       return false;
     }
   }

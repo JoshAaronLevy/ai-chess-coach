@@ -19,6 +19,7 @@ import {
   createStorageUnavailableError,
   createValidationError 
 } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 /**
  * BoardStateManager - Service for managing chess game persistence
@@ -63,7 +64,7 @@ export class BoardStateManager {
       // Check storage quota before saving
       const stats = this.getStorageStats();
       if (stats.nearQuota) {
-        console.warn('[BoardStateManager] Storage quota warning: near limit');
+        logger.warn('[BoardStateManager] Storage quota warning: near limit');
       }
 
       const timestamp = Date.now();
@@ -111,7 +112,7 @@ export class BoardStateManager {
         throw storageError;
       }
       
-      console.log('[BoardStateManager] Game saved successfully:', { 
+      logger.info('[BoardStateManager] Game saved successfully:', { 
         key: storageKey, 
         moveCount: savedGameData.moveCount,
         hasMetadata: !!savedGameData.metadata
@@ -126,7 +127,7 @@ export class BoardStateManager {
         error instanceof Error ? error.message : 'Failed to save game',
         ErrorCode.STORAGE_ERROR
       );
-      console.error('[BoardStateManager] Failed to save game:', persistenceError.message);
+      logger.error('[BoardStateManager] Failed to save game:', persistenceError.message);
       return {
         success: false,
         error: persistenceError.message
@@ -141,7 +142,7 @@ export class BoardStateManager {
    */
   static loadMostRecentGame(): LoadResult {
     try {
-      console.log('[BoardStateManager] Starting load process...');
+      logger.info('[BoardStateManager] Starting load process...');
       
       const allSavedGames = this.getAllSavedGames();
 
@@ -158,7 +159,7 @@ export class BoardStateManager {
 
       // Find the most recent saved game (highest timestamp)
       const mostRecentSave = allSavedGames.sort((a, b) => b.timestamp - a.timestamp)[0];
-      console.log('[BoardStateManager] Loading most recent save:', mostRecentSave.id);
+      logger.info('[BoardStateManager] Loading most recent save:', mostRecentSave.id);
 
       // Validate the saved game data
       const validationResult = this.validateSavedGame(mostRecentSave);
@@ -173,7 +174,7 @@ export class BoardStateManager {
         };
       }
 
-      console.log('[BoardStateManager] Game loaded successfully:', {
+      logger.info('[BoardStateManager] Game loaded successfully:', {
         id: mostRecentSave.id,
         moveCount: mostRecentSave.historySan.length,
         isAiMode: mostRecentSave.isAiMode,
@@ -190,7 +191,7 @@ export class BoardStateManager {
         error instanceof Error ? error.message : 'Failed to load saved game',
         ErrorCode.STORAGE_ERROR
       );
-      console.error('[BoardStateManager] Failed to load saved game:', loadError.message);
+      logger.error('[BoardStateManager] Failed to load saved game:', loadError.message);
       return {
         success: false,
         error: loadError.message
@@ -216,12 +217,12 @@ export class BoardStateManager {
               allSavedGames.push(data);
             }
           } catch (parseError) {
-            console.warn('[BoardStateManager] Skipping corrupted save data:', key, parseError);
+            logger.warn('[BoardStateManager] Skipping corrupted save data:', key, parseError);
           }
         }
       }
     } catch (error) {
-      console.error('[BoardStateManager] Error reading from localStorage:', error);
+      logger.error('[BoardStateManager] Error reading from localStorage:', error);
     }
 
     return allSavedGames.sort((a, b) => b.timestamp - a.timestamp);
@@ -251,7 +252,7 @@ export class BoardStateManager {
       }
       return false;
     } catch (error) {
-      console.error('[BoardStateManager] Error checking for saved games:', error);
+      logger.error('[BoardStateManager] Error checking for saved games:', error);
       return false;
     }
   }
@@ -284,7 +285,7 @@ export class BoardStateManager {
 
       return isDifferent;
     } catch (error) {
-      console.error('[BoardStateManager] Error checking state difference:', error);
+      logger.error('[BoardStateManager] Error checking state difference:', error);
       // On error, assume state is different
       return true;
     }
@@ -366,12 +367,12 @@ export class BoardStateManager {
     try {
       if (key.startsWith(this.STORAGE_KEY_PREFIX)) {
         localStorage.removeItem(key);
-        console.log('[BoardStateManager] Deleted saved game:', key);
+        logger.info('[BoardStateManager] Deleted saved game:', key);
         return true;
       }
       return false;
     } catch (error) {
-      console.error('[BoardStateManager] Error deleting saved game:', error);
+      logger.error('[BoardStateManager] Error deleting saved game:', error);
       return false;
     }
   }
@@ -394,10 +395,10 @@ export class BoardStateManager {
 
       keysToDelete.forEach(key => localStorage.removeItem(key));
       
-      console.log('[BoardStateManager] Deleted all saved games:', keysToDelete.length);
+      logger.info('[BoardStateManager] Deleted all saved games:', keysToDelete.length);
       return keysToDelete.length;
     } catch (error) {
-      console.error('[BoardStateManager] Error deleting all saved games:', error);
+      logger.error('[BoardStateManager] Error deleting all saved games:', error);
       return 0;
     }
   }
@@ -443,10 +444,10 @@ export class BoardStateManager {
         gameCount,
         availableSpace,
         nearQuota,
-        largestGameSize
+        largestGameSize: 0
       };
     } catch (error) {
-      console.error('[BoardStateManager] Error calculating storage stats:', error);
+      logger.error('[BoardStateManager] Error calculating storage stats:', error);
       return {
         totalUsed: 0,
         gamesUsed: 0,
@@ -576,7 +577,7 @@ export class BoardStateManager {
         }
       }
 
-      console.log('[BoardStateManager] Import completed:', { imported, failed: failed.length });
+      logger.info('[BoardStateManager] Import completed:', { imported, failed: failed.length });
 
       return {
         success: true,
@@ -650,7 +651,7 @@ export class BoardStateManager {
 
       const deleted = gamesToDelete.length;
 
-      console.log('[BoardStateManager] Cleanup completed:', { 
+      logger.info('[BoardStateManager] Cleanup completed:', { 
         deleted, 
         spaceFreed, 
         dryRun,
@@ -665,7 +666,7 @@ export class BoardStateManager {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[BoardStateManager] Cleanup failed:', errorMessage);
+      logger.error('[BoardStateManager] Cleanup failed:', errorMessage);
       return {
         success: false,
         deleted: 0,
@@ -705,7 +706,7 @@ export class BoardStateManager {
       const storageKey = `${this.STORAGE_KEY_PREFIX}${game.timestamp}`;
       localStorage.setItem(storageKey, JSON.stringify(game));
 
-      console.log('[BoardStateManager] Metadata updated:', { gameId, metadata });
+      logger.info('[BoardStateManager] Metadata updated:', { gameId, metadata });
 
       return {
         success: true,
@@ -733,7 +734,7 @@ export class BoardStateManager {
       return true;
     } catch {
       const unavailableError = createStorageUnavailableError();
-      console.warn('[BoardStateManager]', unavailableError.message);
+      logger.warn('[BoardStateManager]', unavailableError.message);
       return false;
     }
   }

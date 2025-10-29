@@ -15,6 +15,7 @@ import { postCoachGrade } from '../lib/coachApi';
 import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
 import type { AnalysisRequest, AnalysisOptions } from '../types/api';
 import { APIError, logError, isAPIError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 /**
  * ChessCoachApiService - Service for analyzing chess positions with AI coach
@@ -50,7 +51,7 @@ export class ChessCoachApiService {
       gameAnalysis: request.gameAnalysis,
     };
 
-    console.log('[ChessCoachApiService] Analyzing position:', {
+    logger.info('[ChessCoachApiService] Analyzing position:', {
       fen: request.boardState.fen,
       lastMove: request.lastMove?.san,
       turn: request.boardState.turn,
@@ -66,13 +67,13 @@ export class ChessCoachApiService {
       );
 
       const duration = Date.now() - startTime;
-      console.log(`[ChessCoachApiService] API call completed in ${duration}ms`);
+      logger.info(`[ChessCoachApiService] API call completed in ${duration}ms`);
 
       // Parse the response
       const insights = parseDifyAnswer(response);
 
       if (insights) {
-        console.log('[ChessCoachApiService] Successfully parsed insights:', {
+        logger.info('[ChessCoachApiService] Successfully parsed insights:', {
           hasGrade: !!insights.lastMove.grade,
           hasBestMove: !!insights.bestMove,
           hasNextMoves: !!insights.next_moves,
@@ -89,7 +90,7 @@ export class ChessCoachApiService {
       }
     } catch (error) {
       const duration = Date.now() - startTime;
-      console.log(`[ChessCoachApiService] API call failed after ${duration}ms`);
+      logger.info(`[ChessCoachApiService] API call failed after ${duration}ms`);
 
       // If it's already an APIError from postCoachGrade, try to parse insights from it
       // This handles cases where the API returns an error but still includes insights
@@ -97,7 +98,7 @@ export class ChessCoachApiService {
         const insightsFromError = parseDifyAnswer(error);
         
         if (insightsFromError) {
-          console.log('[ChessCoachApiService] Parsed insights from error response:', {
+          logger.info('[ChessCoachApiService] Parsed insights from error response:', {
             hasGrade: !!insightsFromError.lastMove.grade,
             hasBestMove: !!insightsFromError.bestMove,
             hasNextMoves: !!insightsFromError.next_moves,
