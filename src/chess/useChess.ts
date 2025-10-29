@@ -237,12 +237,11 @@ export const useChess = (): UseChessReturn => {
   const refreshGameState = useCallback(() => {
     setEngineVersion(v => v + 1);
     // Check if current state differs from saved state
-    const currentState = {
-      fen: gameEngineRef.current.fen(),
-      historySan: gameEngineRef.current.history(),
-      isAiMode: isAiMode
-    };
-    const isDifferent = BoardStateManager.isStateDifferent(currentState);
+    const isDifferent = BoardStateManager.isStateDifferent(
+      gameEngineRef.current.fen(),
+      gameEngineRef.current.history(),
+      isAiMode
+    );
     setIsStateDifferentFromSaved(isDifferent);
   }, [isAiMode]);
 
@@ -643,13 +642,10 @@ export const useChess = (): UseChessReturn => {
    * Returns true if successful, false if failed
    */
   const saveCurrentGame = useCallback((): boolean => {
-    const result = BoardStateManager.saveGame(
-      gameEngineRef.current.fen(),
-      historySan,
-      isAiMode
-    );
+    const gameData = gameEngineRef.current.toJSON(isAiMode);
+    const success = BoardStateManager.saveGame(gameData);
 
-    if (result.success) {
+    if (success) {
       // Refresh game state to update save tracking
       refreshGameState();
       
@@ -657,8 +653,8 @@ export const useChess = (): UseChessReturn => {
       setHasSavedGame(true);
     }
 
-    return result.success;
-  }, [historySan, isAiMode, refreshGameState]);
+    return success;
+  }, [isAiMode, refreshGameState]);
 
   /**
    * Load the most recent saved game from localStorage
@@ -676,27 +672,29 @@ export const useChess = (): UseChessReturn => {
     // Clear insights before loading new game
     clearInsights();
 
-    const result = BoardStateManager.loadMostRecentGame();
+    const savedGame = BoardStateManager.loadMostRecentGame();
 
-    if (!result.success || !result.data) {
-      console.warn('[LOAD_GAME]', result.error || 'Failed to load game');
+    if (!savedGame) {
+      console.warn('[LOAD_GAME] No saved game found');
       return false;
     }
 
-    const mostRecentSave = result.data;
-
     try {
-      // Load the game state
-      gameEngineRef.current.load(mostRecentSave.fen);
+      // Restore game state using ChessGameEngine
+      const success = gameEngineRef.current.fromJSON(savedGame);
+      if (!success) {
+        console.error('[LOAD_GAME] Failed to restore game state');
+        return false;
+      }
       
       // Restore AI mode state
-      setIsAiMode(mostRecentSave.isAiMode);
+      setIsAiMode(savedGame.isAiMode);
       
       // Update all game state to reflect the loaded position
-      updateGameState();
+      refreshGameState();
       
       // Initialize game log with the loaded state
-      gameLog.resetAll(mostRecentSave.fen);
+      gameLog.resetAll(savedGame.fen);
       
       // Clear insights history when loading a saved game
       setInsightsHistory([]);
@@ -707,7 +705,8 @@ export const useChess = (): UseChessReturn => {
       console.error('[LOAD_GAME] Error applying loaded game state:', error);
       return false;
     }
-  }, [updateGameState, gameLog, clearInsights, aiMoveTimeout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameLog, aiMoveTimeout]); // refreshGameState and clearInsights create circular dependencies
 
   // Memoize the return object to prevent unnecessary re-renders
   const returnValue = useMemo<UseChessReturn>(() => ({

@@ -345,4 +345,70 @@ export class ChessGameEngine {
   static computePositionId(fen: string, turn: 'w' | 'b'): string {
     return hashPositionId(`${fen}|${turn}`);
   }
+
+  /**
+   * Serialize game state to JSON-compatible object
+   * Includes all necessary data to restore the game state
+   * 
+   * @param isAiMode - Whether the game is in AI mode
+   * @returns Serializable game data
+   */
+  toJSON(isAiMode: boolean = false): {
+    id: string;
+    timestamp: number;
+    fen: string;
+    historySan: string[];
+    isAiMode: boolean;
+    moveCount: number;
+    currentTurn: ChessColor;
+  } {
+    const timestamp = Date.now();
+    return {
+      id: `saved_game_${timestamp}`,
+      timestamp,
+      fen: this.game.fen(),
+      historySan: this.game.history(),
+      isAiMode,
+      moveCount: this.game.history().length,
+      currentTurn: this.game.turn()
+    };
+  }
+
+  /**
+   * Restore game state from serialized data
+   * Validates the data and replays moves to ensure consistency
+   * 
+   * @param data - Serialized game data
+   * @returns True if successfully restored, false otherwise
+   */
+  fromJSON(data: {
+    fen: string;
+    historySan: string[];
+    isAiMode?: boolean;
+  }): boolean {
+    try {
+      // Validate by replaying history
+      const testGame = new Chess();
+      for (const move of data.historySan) {
+        const result = testGame.move(move);
+        if (!result) {
+          logger.error('[ChessGameEngine] Invalid move in history:', move);
+          return false;
+        }
+      }
+
+      // Verify replayed game matches FEN
+      if (testGame.fen() !== data.fen) {
+        logger.error('[ChessGameEngine] History does not match FEN');
+        return false;
+      }
+
+      // If validation passed, load the FEN into our game instance
+      this.game.load(data.fen);
+      return true;
+    } catch (error) {
+      logger.error('[ChessGameEngine] Failed to restore from JSON:', error);
+      return false;
+    }
+  }
 }
