@@ -5,23 +5,14 @@ import { hashPositionId } from '../utils/hash.js';
 import { ErrorCode, AppError, createInvalidMoveError, createInvalidFenError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
-/**
- * Type for chess piece colors
- */
 type ChessColor = 'w' | 'b';
 
-/**
- * Move result from making a move
- */
 export interface MoveResult {
   success: boolean;
-  move?: any; // chess.js move object
+  move?: any;
   error?: string;
 }
 
-/**
- * Comprehensive game state snapshot
- */
 export interface GameState {
   fen: string;
   turn: ChessColor;
@@ -46,16 +37,6 @@ export interface GameState {
   positionId: string;
 }
 
-/**
- * ChessGameEngine - Core chess game logic service
- * 
- * Encapsulates all chess.js integration and game logic without React dependencies.
- * Provides a clean API for game operations including move validation, undo/redo,
- * and comprehensive game state management.
- * 
- * This service is stateful (maintains Chess.js instance) but has no React dependencies,
- * making it easy to test and reuse across different contexts.
- */
 export class ChessGameEngine {
   private game: Chess;
 
@@ -67,12 +48,6 @@ export class ChessGameEngine {
     }
   }
 
-  /**
-   * Make a move on the board
-   * 
-   * @param move - Move in SAN notation, UCI notation, or move object { from, to, promotion }
-   * @returns MoveResult with success status and move details or error
-   */
   makeMove(move: string | { from: string; to: string; promotion?: string }): MoveResult {
     try {
       const result = this.game.move(move);
@@ -104,28 +79,14 @@ export class ChessGameEngine {
     }
   }
 
-  /**
-   * Undo the last move
-   * 
-   * @returns The move that was undone, or null if no moves to undo
-   */
   undo(): any | null {
     return this.game.undo();
   }
 
-  /**
-   * Reset the game to the starting position
-   */
   reset(): void {
     this.game.reset();
   }
 
-  /**
-   * Load a position from FEN string
-   * 
-   * @param fen - FEN string to load
-   * @returns True if successful, false if invalid FEN
-   */
   load(fen: string): boolean {
     try {
       this.game.load(fen);
@@ -140,102 +101,58 @@ export class ChessGameEngine {
     }
   }
 
-  /**
-   * Get the current FEN string
-   */
   fen(): string {
     return this.game.fen();
   }
 
-  /**
-   * Get the current turn
-   */
   turn(): ChessColor {
     return this.game.turn();
   }
 
-  /**
-   * Get move history in SAN notation
-   */
   history(): string[] {
     return this.game.history();
   }
 
-  /**
-   * Get verbose move history
-   */
   historyVerbose(): any[] {
     return this.game.history({ verbose: true });
   }
 
-  /**
-   * Get legal moves in verbose format
-   */
   movesVerbose(): any[] {
     return this.game.moves({ verbose: true });
   }
 
-  /**
-   * Check if the game is over
-   */
   isGameOver(): boolean {
     return this.game.isGameOver();
   }
 
-  /**
-   * Check if the current position is in check
-   */
   inCheck(): boolean {
     return this.game.inCheck();
   }
 
-  /**
-   * Check if the current position is checkmate
-   */
   isCheckmate(): boolean {
     return this.game.isCheckmate();
   }
 
-  /**
-   * Check if the current position is stalemate
-   */
   isStalemate(): boolean {
     return this.game.isStalemate();
   }
 
-  /**
-   * Check if the current position is a draw
-   */
   isDraw(): boolean {
     return this.game.isDraw();
   }
 
-  /**
-   * Check if the current position is a threefold repetition
-   */
   isThreefoldRepetition(): boolean {
     return this.game.isThreefoldRepetition();
   }
 
-  /**
-   * Check if the current position has insufficient material
-   */
   isInsufficientMaterial(): boolean {
     return this.game.isInsufficientMaterial();
   }
 
-  /**
-   * Get the current move number
-   */
   moveNumber(): number {
     return this.game.moveNumber();
   }
 
-  /**
-   * Get a comprehensive snapshot of the current game state
-   * 
-   * @returns GameState object with all relevant game information
-   */
   getGameState(): GameState {
     const history = this.game.history();
     const historyVerbose = this.game.history({ verbose: true });
@@ -285,21 +202,10 @@ export class ChessGameEngine {
     };
   }
 
-  /**
-   * Get the underlying Chess.js instance
-   * 
-   * Use sparingly - prefer using ChessGameEngine methods when possible
-   */
   getChessInstance(): Chess {
     return this.game;
   }
 
-  /**
-   * Static helper: Compute detailed legal moves with check detection
-   * 
-   * @param game - Chess.js instance
-   * @returns Array of detailed legal moves
-   */
   static computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
     const verbose = game.moves({ verbose: true }) as Array<{
       san: string;
@@ -315,7 +221,6 @@ export class ChessGameEngine {
     return verbose.map(m => {
       const uci = (m.from && m.to) ? (m.from + m.to + (m.promotion ? m.promotion : '')) : null;
 
-      // Compute givesCheck by applying on a clone
       const clone = new Chess(game.fen());
       clone.move({ from: m.from, to: m.to, promotion: m.promotion });
       const givesCheck = clone.inCheck();
@@ -335,24 +240,10 @@ export class ChessGameEngine {
     });
   }
 
-  /**
-   * Static helper: Compute deterministic position ID from FEN and turn
-   * 
-   * @param fen - FEN string
-   * @param turn - Current turn ('w' or 'b')
-   * @returns Hashed position ID
-   */
   static computePositionId(fen: string, turn: 'w' | 'b'): string {
     return hashPositionId(`${fen}|${turn}`);
   }
 
-  /**
-   * Serialize game state to JSON-compatible object
-   * Includes all necessary data to restore the game state
-   * 
-   * @param isAiMode - Whether the game is in AI mode
-   * @returns Serializable game data
-   */
   toJSON(isAiMode: boolean = false): {
     id: string;
     timestamp: number;
@@ -374,20 +265,12 @@ export class ChessGameEngine {
     };
   }
 
-  /**
-   * Restore game state from serialized data
-   * Validates the data and replays moves to ensure consistency
-   * 
-   * @param data - Serialized game data
-   * @returns True if successfully restored, false otherwise
-   */
   fromJSON(data: {
     fen: string;
     historySan: string[];
     isAiMode?: boolean;
   }): boolean {
     try {
-      // Validate by replaying history
       const testGame = new Chess();
       for (const move of data.historySan) {
         const result = testGame.move(move);
@@ -397,13 +280,11 @@ export class ChessGameEngine {
         }
       }
 
-      // Verify replayed game matches FEN
       if (testGame.fen() !== data.fen) {
         logger.error('[ChessGameEngine] History does not match FEN');
         return false;
       }
 
-      // If validation passed, load the FEN into our game instance
       this.game.load(data.fen);
       return true;
     } catch (error) {

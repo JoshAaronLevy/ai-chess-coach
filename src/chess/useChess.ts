@@ -12,14 +12,8 @@ import { ChessCoachApiService } from '../services/ChessCoachApiService.js';
 import { AIPlayerService } from '../services/AIPlayerService.js';
 import type { AnalysisRequest } from '../types/api.js';
 
-/**
- * Type for chess piece colors
- */
 type ChessColor = 'w' | 'b';
 
-/**
- * Compute detailed legal moves with check detection
- */
 function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
   const verbose = game.moves({ verbose: true }) as Array<{
     san: string;
@@ -54,17 +48,10 @@ function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
   });
 }
 
-/**
- * Compute deterministic position ID from FEN and turn
- */
 function computePositionId(fen: string, turn: 'w'|'b'): string {
   return hashPositionId(`${fen}|${turn}`);
 }
 
-/**
- * Build complete analysis request payload for API
- * Consolidates board state, material, move history, and game analysis
- */
 function buildAnalysisPayload(game: Chess, lastMove?: any): AnalysisRequest {
   const currentPieces = boardToPieces(game);
   const materialCount = countMaterial(currentPieces);
@@ -117,9 +104,6 @@ function buildAnalysisPayload(game: Chess, lastMove?: any): AnalysisRequest {
   };
 }
 
-/**
- * Interface for the chess game state
- */
 interface ChessGameState {
   fen: string;
   turn: ChessColor;
@@ -136,9 +120,6 @@ interface ChessGameState {
   pendingAiMove: string | null;
 }
 
-/**
- * Interface for the useChess hook return value
- */
 interface UseChessReturn extends ChessGameState {
   onPieceDrop: (from: string, to: string) => boolean;
   undo: () => void;
@@ -167,22 +148,13 @@ interface UseChessReturn extends ChessGameState {
   checkHasSavedGame: () => boolean;
 }
 
-/**
- * Custom React hook for managing chess game state and operations
- * Uses ChessGameEngine for game logic and state management
- */
 export const useChess = (): UseChessReturn => {
-  // Persistent chess game engine using useRef
   const gameEngineRef = useRef(new ChessGameEngine());
   
-  // Initialize game log hook
   const gameLog = useGameLog();
   
-  // Get difficulty setting from store
   const { difficulty } = useAiDifficultyStore();
   
-  // Single state variable to trigger re-renders when game engine changes
-  // Increment this counter whenever the engine state is modified
   const [engineVersion, setEngineVersion] = useState(0);
   
   // Derive all game-related state from the engine (single source of truth)
@@ -214,9 +186,6 @@ export const useChess = (): UseChessReturn => {
   const [isStateDifferentFromSaved, setIsStateDifferentFromSaved] = useState<boolean>(false);
   const [hasSavedGame, setHasSavedGame] = useState<boolean>(false);
 
-  /**
-   * Check if any saved game exists in localStorage
-   */
   const checkHasSavedGame = useCallback((): boolean => {
     const hasGames = BoardStateManager.hasSavedGames();
     setHasSavedGame(hasGames);
@@ -230,10 +199,6 @@ export const useChess = (): UseChessReturn => {
     checkHasSavedGame();
   }, [checkHasSavedGame, gameLog]);
 
-  /**
-   * Trigger a re-render by incrementing the engine version
-   * Call this after any operation that modifies the game engine state
-   */
   const refreshGameState = useCallback(() => {
     setEngineVersion(v => v + 1);
     // Check if current state differs from saved state
@@ -245,22 +210,11 @@ export const useChess = (): UseChessReturn => {
     setIsStateDifferentFromSaved(isDifferent);
   }, [isAiMode]);
 
-  /**
-   * Updates all state variables based on current chess game engine
-   * @deprecated Use refreshGameState() instead
-   */
   const updateGameState = refreshGameState;
 
-  /**
-   * Handle piece drops from react-chessboard
-   * Validates move legality and updates game state if valid
-   * Auto-promotes to queen for simplicity
-   * IMPORTANT: Must be synchronous and return boolean
-   */
   const onPieceDrop = useCallback((from: string, to: string): boolean => {
-    // IMPORTANT: must be sync and return boolean
     const game = gameEngineRef.current.getChessInstance();
-    const move = game.move({ from, to, promotion: 'q' }); // promotion default is fine
+    const move = game.move({ from, to, promotion: 'q' });
     console.log('[DROP]', { from, to, move, fen: game.fen() });
     if (move == null) return false;
     
@@ -383,81 +337,53 @@ export const useChess = (): UseChessReturn => {
     lastMoveFrom,
     lastMoveTo,
     historySan
-  ]); // Note: handleAiMoveResponse creates circular dependency, used via closure
+  ]); 
 
-  /**
-   * Undo the last move
-   * Reverts to previous position and updates state
-   */
   const undo = useCallback(() => {
     const undoMove = gameEngineRef.current.undo();
     if (undoMove) {
       updateGameState();
       gameLog.undoLast();
-      // Remove last insight from history when undoing a move
       setInsightsHistory(prev => prev.slice(0, -1));
       
-      // Log board state after undo
       const game = gameEngineRef.current.getChessInstance();
       const analysisPayload = buildAnalysisPayload(game);
       console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify(analysisPayload));
     }
   }, [updateGameState, gameLog]);
 
-  /**
-   * Reset the game to starting position
-   * Clears all move history and resets state
-   */
   const reset = useCallback(() => {
     gameEngineRef.current.reset();
     updateGameState();
     gameLog.resetAll(gameEngineRef.current.fen());
-    clearInsights(); // Clear insights when starting a new game
-    setInsightsHistory([]); // Clear insights history when starting a new game
+    clearInsights();
+    setInsightsHistory([]);
     
-    // Re-check for saved games after reset
     checkHasSavedGame();
     
-    // Comprehensive AI state cleanup
     setIsAiThinking(false);
     setPendingAiMove(null);
     
-    // Clear any pending timeouts
     if (aiMoveTimeout) {
       clearTimeout(aiMoveTimeout);
       setAiMoveTimeout(null);
     }
     
     console.log('[AI] AI state cleared during game reset');
-    // Note: Don't reset isAiMode so user's preference persists
     
-    // Log board state after reset
     const game = gameEngineRef.current.getChessInstance();
     const analysisPayload = buildAnalysisPayload(game);
     console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify(analysisPayload));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]); // clearInsights creates circular dependency
+  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]);
 
-
-
-  /**
-   * Check if the game has ended
-   * Returns true for checkmate, stalemate, or any draw condition
-   */
   const isGameOver = useCallback((): boolean => {
     return gameEngineRef.current.isGameOver();
   }, []);
 
-  /**
-   * Mark insights as viewed, clearing the "new insights" flag
-   */
   const markInsightsAsViewed = useCallback(() => {
     setHasNewInsights(false);
   }, []);
 
-  /**
-   * Clear insights state (for new games)
-   */
   const clearInsights = useCallback(() => {
     setInsights(null);
     setHasNewInsights(false);
@@ -465,20 +391,13 @@ export const useChess = (): UseChessReturn => {
     setInsightsError(null);
   }, []);
 
-  /**
-   * Toggle AI mode on/off (only allowed when no moves have been made)
-   * @deprecated AI mode is now always enabled. This function is kept for compatibility but has no effect.
-   */
   const toggleAiMode = useCallback(() => {
-    // Enhanced validation
     if (historySan.length === 0) {
-      // Clear any pending AI state when toggling
       if (isAiThinking) {
         console.log('[AI] Clearing AI thinking state during mode toggle');
         setIsAiThinking(false);
         setPendingAiMove(null);
         
-        // Clear any pending timeouts
         if (aiMoveTimeout) {
           clearTimeout(aiMoveTimeout);
           setAiMoveTimeout(null);
@@ -495,23 +414,14 @@ export const useChess = (): UseChessReturn => {
     }
   }, [historySan.length, isAiThinking, aiMoveTimeout]);
 
-  /**
-   * Set AI thinking state
-   */
   const setAiThinking = useCallback((thinking: boolean) => {
     setIsAiThinking(thinking);
   }, []);
 
-  /**
-   * Check if it's the AI's turn to move
-   */
   const isAiTurn = useCallback(() => {
     return isAiMode && turn === aiColor && !gameOver;
   }, [isAiMode, turn, aiColor, gameOver]);
 
-  /**
-   * Handle AI move response with natural delay and timeout protection
-   */
   const handleAiMoveResponse = useCallback((bestMove: { uci: string, san: string }) => {
     const game = gameEngineRef.current.getChessInstance();
     if (!isAiMode || game.isGameOver()) {
@@ -537,14 +447,9 @@ export const useChess = (): UseChessReturn => {
     // Store the protection timeout ID for cleanup
     setAiMoveTimeout(protectionTimeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAiMode]); // executeAiMove is defined later, creates circular dependency
+  }, [isAiMode]); 
 
-
-  /**
-   * Execute AI move and update game state with race condition protection
-   */
   const executeAiMove = useCallback((uciMove: string) => {
-    // Prevent multiple simultaneous AI moves
     if (isAiThinking && pendingAiMove) {
       console.warn('[AI] AI move already in progress, ignoring duplicate request');
       return false;
@@ -552,7 +457,6 @@ export const useChess = (): UseChessReturn => {
 
     const game = gameEngineRef.current.getChessInstance();
     
-    // Validate game state using AIPlayerService
     if (!game || !AIPlayerService.isAiTurn(game, aiColor)) {
       console.warn('[AI] Cannot execute AI move: invalid game state or not AI turn');
       setIsAiThinking(false);
@@ -562,7 +466,6 @@ export const useChess = (): UseChessReturn => {
     try {
       console.log('[AI] Attempting to execute move:', uciMove);
 
-      // Execute move using AIPlayerService
       const moveResult = AIPlayerService.executeMove(game, { uci: uciMove, san: '' });
       if (!moveResult) {
         console.error('[AI] Invalid move:', uciMove);
@@ -637,31 +540,20 @@ export const useChess = (): UseChessReturn => {
     }
   }, [updateGameState, gameLog, isAiThinking, pendingAiMove, aiColor, aiMoveTimeout]);
 
-  /**
-   * Save the current game state to localStorage
-   * Returns true if successful, false if failed
-   */
   const saveCurrentGame = useCallback((): boolean => {
     const gameData = gameEngineRef.current.toJSON(isAiMode);
     const success = BoardStateManager.saveGame(gameData);
 
     if (success) {
-      // Refresh game state to update save tracking
       refreshGameState();
       
-      // Update hasSavedGame state after successful save
       setHasSavedGame(true);
     }
 
     return success;
   }, [isAiMode, refreshGameState]);
 
-  /**
-   * Load the most recent saved game from localStorage
-   * Returns true if successful, false if failed
-   */
   const loadSavedGame = useCallback((): boolean => {
-    // Clear any pending AI state before loading
     setIsAiThinking(false);
     setPendingAiMove(null);
     if (aiMoveTimeout) {
@@ -669,7 +561,6 @@ export const useChess = (): UseChessReturn => {
       setAiMoveTimeout(null);
     }
 
-    // Clear insights before loading new game
     clearInsights();
 
     const savedGame = BoardStateManager.loadMostRecentGame();
@@ -680,7 +571,6 @@ export const useChess = (): UseChessReturn => {
     }
 
     try {
-      // Restore game state using ChessGameEngine
       const success = gameEngineRef.current.fromJSON(savedGame);
       if (!success) {
         console.error('[LOAD_GAME] Failed to restore game state');

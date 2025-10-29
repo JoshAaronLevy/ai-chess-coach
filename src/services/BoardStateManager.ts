@@ -1,9 +1,6 @@
 import { logger } from '../utils/logger';
 import { createQuotaExceededError } from '../utils/errors';
 
-/**
- * Simple game data structure for localStorage
- */
 export interface SavedGame {
   id: string;
   timestamp: number;
@@ -12,21 +9,9 @@ export interface SavedGame {
   isAiMode: boolean;
 }
 
-/**
- * BoardStateManager - Simple localStorage wrapper for chess game persistence
- * 
- * Provides basic save/load operations without complex validation or features.
- * Serialization/deserialization is handled by ChessGameEngine.
- */
 export class BoardStateManager {
   private static readonly STORAGE_KEY_PREFIX = 'acc_saved_game_';
 
-  /**
-   * Save game data to localStorage
-   * 
-   * @param data - Game data to save
-   * @returns True if successful, false otherwise
-   */
   static saveGame(data: SavedGame): boolean {
     try {
       const storageKey = `${this.STORAGE_KEY_PREFIX}${data.timestamp}`;
@@ -44,11 +29,6 @@ export class BoardStateManager {
     }
   }
 
-  /**
-   * Load the most recent saved game from localStorage
-   * 
-   * @returns Saved game data, or null if none found
-   */
   static loadMostRecentGame(): SavedGame | null {
     try {
       const games = this.getAllGames();
@@ -56,7 +36,6 @@ export class BoardStateManager {
         return null;
       }
       
-      // Return most recent (highest timestamp)
       return games.sort((a, b) => b.timestamp - a.timestamp)[0];
     } catch (error) {
       logger.error('[BoardStateManager] Load failed:', error);
@@ -64,11 +43,6 @@ export class BoardStateManager {
     }
   }
 
-  /**
-   * Get all saved games from localStorage
-   * 
-   * @returns Array of saved games, sorted by timestamp (newest first)
-   */
   static getAllGames(): SavedGame[] {
     const games: SavedGame[] = [];
     
@@ -81,7 +55,7 @@ export class BoardStateManager {
             if (data.timestamp && data.fen && data.historySan) {
               games.push(data);
             }
-          } catch (parseError) {
+          } catch {
             logger.warn('[BoardStateManager] Skipping corrupted save:', key);
           }
         }
@@ -93,23 +67,10 @@ export class BoardStateManager {
     return games.sort((a, b) => b.timestamp - a.timestamp);
   }
 
-  /**
-   * Check if any saved games exist
-   * 
-   * @returns True if at least one saved game exists
-   */
   static hasSavedGames(): boolean {
     return this.getAllGames().length > 0;
   }
 
-  /**
-   * Check if current game state differs from most recent save
-   * 
-   * @param currentFen - Current FEN
-   * @param currentHistory - Current move history
-   * @param currentIsAiMode - Current AI mode
-   * @returns True if different from saved state
-   */
   static isStateDifferent(
     currentFen: string,
     currentHistory: string[],
@@ -117,7 +78,7 @@ export class BoardStateManager {
   ): boolean {
     const mostRecent = this.loadMostRecentGame();
     if (!mostRecent) {
-      return true; // No saved game, so always different
+      return true;
     }
 
     return (
@@ -128,12 +89,6 @@ export class BoardStateManager {
     );
   }
 
-  /**
-   * Delete a specific saved game
-   * 
-   * @param timestamp - Timestamp of the game to delete
-   * @returns True if deleted, false if not found
-   */
   static deleteGame(timestamp: number): boolean {
     try {
       const key = `${this.STORAGE_KEY_PREFIX}${timestamp}`;
@@ -149,11 +104,6 @@ export class BoardStateManager {
     }
   }
 
-  /**
-   * Delete all saved games
-   * 
-   * @returns Number of games deleted
-   */
   static deleteAllGames(): number {
     try {
       const keysToDelete: string[] = [];
