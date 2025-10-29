@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Chess } from 'chess.js';
 import { useGameLog } from './useGameLog.js';
@@ -156,8 +158,7 @@ export const useChess = (): UseChessReturn => {
   const { difficulty } = useAiDifficultyStore();
   
   const [engineVersion, setEngineVersion] = useState(0);
-  
-  // Derive all game-related state from the engine (single source of truth)
+
   const fen = useMemo(() => gameEngineRef.current.fen(), [engineVersion]);
   const turn = useMemo(() => gameEngineRef.current.turn(), [engineVersion]);
   const historySan = useMemo(() => gameEngineRef.current.history(), [engineVersion]);
@@ -326,7 +327,6 @@ export const useChess = (): UseChessReturn => {
       });
     
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     gameLog,
     isAiMode,
@@ -352,6 +352,13 @@ export const useChess = (): UseChessReturn => {
     }
   }, [updateGameState, gameLog]);
 
+  const clearInsights = useCallback(() => {
+    setInsights(null);
+    setHasNewInsights(false);
+    setIsLoadingInsights(false);
+    setInsightsError(null);
+  }, []);
+
   const reset = useCallback(() => {
     gameEngineRef.current.reset();
     updateGameState();
@@ -374,7 +381,7 @@ export const useChess = (): UseChessReturn => {
     const game = gameEngineRef.current.getChessInstance();
     const analysisPayload = buildAnalysisPayload(game);
     console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify(analysisPayload));
-  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]);
+  }, [updateGameState, gameLog, clearInsights, checkHasSavedGame, aiMoveTimeout]);
 
   const isGameOver = useCallback((): boolean => {
     return gameEngineRef.current.isGameOver();
@@ -382,13 +389,6 @@ export const useChess = (): UseChessReturn => {
 
   const markInsightsAsViewed = useCallback(() => {
     setHasNewInsights(false);
-  }, []);
-
-  const clearInsights = useCallback(() => {
-    setInsights(null);
-    setHasNewInsights(false);
-    setIsLoadingInsights(false);
-    setInsightsError(null);
   }, []);
 
   const toggleAiMode = useCallback(() => {
@@ -446,7 +446,6 @@ export const useChess = (): UseChessReturn => {
 
     // Store the protection timeout ID for cleanup
     setAiMoveTimeout(protectionTimeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAiMode]); 
 
   const executeAiMove = useCallback((uciMove: string) => {
@@ -595,7 +594,6 @@ export const useChess = (): UseChessReturn => {
       console.error('[LOAD_GAME] Error applying loaded game state:', error);
       return false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameLog, aiMoveTimeout]); // refreshGameState and clearInsights create circular dependencies
 
   // Memoize the return object to prevent unnecessary re-renders
