@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Divider } from 'primereact/divider';
-import { Tag } from 'primereact/tag';
-import { ProgressBar } from 'primereact/progressbar';
 import { Accordion, AccordionTab } from 'primereact/accordion';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
@@ -23,19 +21,7 @@ interface CoachModalContentProps {
   onMarkInsightsViewed: () => void;
 }
 
-// Utility function for grade color mapping
-const getGradeColor = (grade: string): 'success' | 'info' | 'warning' | 'danger' => {
-  const upperGrade = grade.toUpperCase();
-  if (upperGrade.startsWith('A')) return 'success';
-  if (upperGrade.startsWith('B')) return 'info';
-  if (upperGrade.startsWith('C')) return 'warning';
-  return 'danger'; // D, F, or unknown
-};
-
 export const CoachModalContent: React.FC<CoachModalContentProps> = ({
-  lastSan,
-  lastMoveFrom,
-  lastMoveTo,
   gameOver,
   gameResult,
   insights,
@@ -147,7 +133,7 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
               onTabChange={(e) => setActiveIndex(e.index as number)}
               className="w-full"
             >
-              {insightsHistory.slice().reverse().map((moveInsight, index) => {
+              {insightsHistory.slice().reverse().map((moveInsight) => {
                 const moveNumber = moveInsight.moveNumber;
                 const grade = moveInsight.insights.lastMove?.grade || '';
                 const isWhiteMove = moveNumber % 2 === 1; // Odd = white, even = black

@@ -1,6 +1,9 @@
 import type { Color, PieceType } from './gameLog.js';
 import type { TutorInsights } from '../utils/difyParser.js';
 
+// Re-export types used by this module
+export type { Color, PieceType } from './gameLog.js';
+
 export interface MoveInsights {
   moveNumber: number;
   san: string;
