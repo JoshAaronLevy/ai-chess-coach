@@ -2,6 +2,8 @@
 import { Chess } from 'chess.js';
 import type { LegalMoveDetailed, PieceType } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
+import { ErrorCode, GameError } from '../types/errors';
+import { createInvalidMoveError, createInvalidFenError } from '../utils/errorHandler';
 
 /**
  * Type for chess piece colors
@@ -81,15 +83,23 @@ export class ChessGameEngine {
           move: result
         };
       } else {
+        const moveStr = typeof move === 'string' ? move : `${move.from}${move.to}`;
+        const invalidMoveError = createInvalidMoveError(moveStr, this.game.fen());
         return {
           success: false,
-          error: 'Illegal move'
+          error: invalidMoveError.message
         };
       }
     } catch (error) {
+      const moveStr = typeof move === 'string' ? move : `${move.from}${move.to}`;
+      const gameError = new GameError(
+        error instanceof Error ? error.message : 'Invalid move',
+        ErrorCode.GAME_INVALID_MOVE,
+        { move: moveStr, fen: this.game.fen() }
+      );
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Invalid move'
+        error: gameError.message
       };
     }
   }
@@ -121,7 +131,11 @@ export class ChessGameEngine {
       this.game.load(fen);
       return true;
     } catch (error) {
-      console.error('[ChessGameEngine] Invalid FEN:', fen, error);
+      const fenError = createInvalidFenError(
+        fen,
+        error instanceof Error ? error.message : undefined
+      );
+      console.error('[ChessGameEngine]', fenError.message);
       return false;
     }
   }
@@ -162,7 +176,7 @@ export class ChessGameEngine {
    */
   moves(square?: string): string[] {
     if (square) {
-      return this.game.moves({ square });
+      return this.game.moves({ square: square as any });
     }
     return this.game.moves();
   }

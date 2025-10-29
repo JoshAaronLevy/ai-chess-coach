@@ -12,6 +12,12 @@ import type {
   CleanupOptions,
   CleanupResult
 } from '../types/persistence';
+import { ErrorCode, PersistenceError } from '../types/errors';
+import { 
+  createQuotaExceededError, 
+  createStorageUnavailableError,
+  createValidationError 
+} from '../utils/errorHandler';
 
 /**
  * BoardStateManager - Service for managing chess game persistence
@@ -42,9 +48,14 @@ export class BoardStateManager {
   ): SaveResult {
     try {
       if (historySan.length === 0) {
+        const validationError = createValidationError(
+          'Cannot save game with no moves',
+          'historySan',
+          historySan
+        );
         return {
           success: false,
-          error: 'Cannot save game with no moves'
+          error: validationError.message
         };
       }
 
@@ -72,9 +83,13 @@ export class BoardStateManager {
       if (!options?.skipValidation) {
         const validation = this.validateSavedGame(savedGameData);
         if (!validation.success) {
+          const validationError = createValidationError(
+            validation.error || 'Validation failed',
+            'savedGameData'
+          );
           return {
             success: false,
-            error: `Validation failed: ${validation.error}`
+            error: validationError.message
           };
         }
       }
@@ -86,9 +101,10 @@ export class BoardStateManager {
       } catch (storageError) {
         // Handle quota exceeded error
         if (storageError instanceof Error && storageError.name === 'QuotaExceededError') {
+          const quotaError = createQuotaExceededError('save');
           return {
             success: false,
-            error: 'Storage quota exceeded. Please delete old games to free up space.'
+            error: quotaError.message
           };
         }
         throw storageError;
@@ -105,11 +121,15 @@ export class BoardStateManager {
         key: storageKey
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[BoardStateManager] Failed to save game:', errorMessage);
+      const persistenceError = new PersistenceError(
+        error instanceof Error ? error.message : 'Failed to save game',
+        ErrorCode.PERSISTENCE_SAVE_FAILED,
+        'save'
+      );
+      console.error('[BoardStateManager] Failed to save game:', persistenceError.message);
       return {
         success: false,
-        error: errorMessage
+        error: persistenceError.message
       };
     }
   }
@@ -126,9 +146,14 @@ export class BoardStateManager {
       const allSavedGames = this.getAllSavedGames();
 
       if (allSavedGames.length === 0) {
+        const notFoundError = new PersistenceError(
+          'No saved games found',
+          ErrorCode.PERSISTENCE_NOT_FOUND,
+          'load'
+        );
         return {
           success: false,
-          error: 'No saved games found'
+          error: notFoundError.message
         };
       }
 
@@ -139,9 +164,14 @@ export class BoardStateManager {
       // Validate the saved game data
       const validationResult = this.validateSavedGame(mostRecentSave);
       if (!validationResult.success) {
+        const corruptedError = new PersistenceError(
+          validationResult.error || 'Corrupted game data',
+          ErrorCode.PERSISTENCE_CORRUPTED_DATA,
+          'load'
+        );
         return {
           success: false,
-          error: validationResult.error
+          error: corruptedError.message
         };
       }
 
@@ -158,11 +188,15 @@ export class BoardStateManager {
       };
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('[BoardStateManager] Failed to load saved game:', errorMessage);
+      const loadError = new PersistenceError(
+        error instanceof Error ? error.message : 'Failed to load saved game',
+        ErrorCode.PERSISTENCE_LOAD_FAILED,
+        'load'
+      );
+      console.error('[BoardStateManager] Failed to load saved game:', loadError.message);
       return {
         success: false,
-        error: errorMessage
+        error: loadError.message
       };
     }
   }
@@ -701,6 +735,8 @@ export class BoardStateManager {
       localStorage.removeItem(testKey);
       return true;
     } catch {
+      const unavailableError = createStorageUnavailableError();
+      console.warn('[BoardStateManager]', unavailableError.message);
       return false;
     }
   }
