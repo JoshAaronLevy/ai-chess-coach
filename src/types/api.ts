@@ -2,7 +2,6 @@
  * API Type Definitions
  * 
  * Type definitions for chess coach API requests and responses.
- * These types define the contract between the application and the AI coach service.
  */
 
 import type { 
@@ -11,11 +10,6 @@ import type {
   MoveInfo,
   Color as ChessColor 
 } from './gameLog';
-
-/**
- * Re-export types from gameLog for API use
- */
-export type { MaterialCount, MoveInfo, ChessColor };
 
 /**
  * Board state representation for API
@@ -56,11 +50,6 @@ export interface BoardStatePayload {
   /** Detailed legal moves */
   legalMovesDetailed?: unknown[];
 }
-
-/**
- * Captured pieces (same as MaterialCount - pieces that were captured)
- */
-export type CapturedPieces = MaterialCount;
 
 /**
  * Move history information
@@ -104,7 +93,7 @@ export interface AnalysisRequest {
   /** Material count for both sides */
   materialCount: MaterialCount;
   /** Captured pieces */
-  capturedPieces: CapturedPieces;
+  capturedPieces: MaterialCount;
   /** Move history */
   moveHistory: MoveHistory;
   /** Game analysis data */

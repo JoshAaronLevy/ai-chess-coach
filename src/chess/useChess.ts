@@ -12,8 +12,6 @@ import { ChessCoachApiService } from '../services/ChessCoachApiService.js';
 import { AIPlayerService } from '../services/AIPlayerService.js';
 import type { AnalysisRequest } from '../types/api.js';
 
-console.info('[USE_CHESS_INIT]');
-
 /**
  * Type for chess piece colors
  */
@@ -61,6 +59,62 @@ function computeLegalMovesDetailed(game: Chess): LegalMoveDetailed[] {
  */
 function computePositionId(fen: string, turn: 'w'|'b'): string {
   return hashPositionId(`${fen}|${turn}`);
+}
+
+/**
+ * Build complete analysis request payload for API
+ * Consolidates board state, material, move history, and game analysis
+ */
+function buildAnalysisPayload(game: Chess, lastMove?: any): AnalysisRequest {
+  const currentPieces = boardToPieces(game);
+  const materialCount = countMaterial(currentPieces);
+  
+  // Calculate captured pieces by comparing to starting position
+  const startingMaterial = {
+    white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
+    black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
+  };
+  const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
+  
+  const boardState = {
+    pieces: currentPieces,
+    fen: game.fen(),
+    turn: game.turn(),
+    moveNumber: game.moveNumber(),
+    halfmoveClock: game.fen().split(' ')[4],
+    fullmoveNumber: game.fen().split(' ')[5],
+    inCheck: game.inCheck(),
+    gameOver: game.isGameOver(),
+    checkmate: game.isCheckmate(),
+    stalemate: game.isStalemate(),
+    draw: game.isDraw(),
+    threefoldRepetition: game.isThreefoldRepetition(),
+    insufficientMaterial: game.isInsufficientMaterial(),
+    positionId: computePositionId(game.fen(), game.turn()),
+    legalMovesDetailed: computeLegalMovesDetailed(game)
+  };
+
+  return {
+    boardState,
+    lastMove: lastMove ? toMoveInfo(lastMove) : undefined,
+    materialCount,
+    capturedPieces,
+    moveHistory: {
+      san: game.history(),
+      uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+      totalMoves: game.history().length,
+      currentPly: game.history().length
+    },
+    gameAnalysis: {
+      legalMoves: game.moves(),
+      legalMovesCount: game.moves().length,
+      attackedSquares: game.moves({ verbose: true }).map(m => m.to),
+      kingSquares: {
+        white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
+        black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
+      }
+    }
+  };
 }
 
 /**
@@ -237,72 +291,8 @@ export const useChess = (): UseChessReturn => {
     // Record move in game log
     gameLog.recordAfterMove(game, move);
     
-    // Comprehensive board state logging for LLM analysis
-    const currentPieces = boardToPieces(game);
-    const materialCount = countMaterial(currentPieces);
-    
-    // Calculate captured pieces by comparing to starting position
-    const startingMaterial = {
-      white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
-      black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
-    };
-    const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
-    
-    // Convert move to comprehensive format
-    const moveInfo = toMoveInfo(move);
-    
-    const boardState = {
-      pieces: currentPieces,
-      fen: game.fen(),
-      turn: game.turn(),
-      moveNumber: game.moveNumber(),
-      halfmoveClock: game.fen().split(' ')[4], // Extract halfmove clock from FEN
-      fullmoveNumber: game.fen().split(' ')[5], // Extract fullmove number from FEN
-      inCheck: game.inCheck(),
-      gameOver: game.isGameOver(),
-      checkmate: game.isCheckmate(),
-      stalemate: game.isStalemate(),
-      draw: game.isDraw(),
-      threefoldRepetition: game.isThreefoldRepetition(),
-      insufficientMaterial: game.isInsufficientMaterial(),
-      positionId: computePositionId(game.fen(), game.turn()),
-      legalMovesDetailed: computeLegalMovesDetailed(game)
-    };
-
-    const payload = {
-      boardState,
-      lastMove: {
-        san: moveInfo.san,
-        uci: moveInfo.uci,
-        from: moveInfo.from,
-        to: moveInfo.to,
-        piece: moveInfo.piece,
-        color: moveInfo.color,
-        captured: moveInfo.captured,
-        promotion: moveInfo.promotion,
-        flags: moveInfo.flags
-      },
-      materialCount,
-      capturedPieces,
-      moveHistory: {
-        san: game.history(),
-        uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
-        totalMoves: game.history().length,
-        currentPly: game.history().length
-      },
-      gameAnalysis: {
-        legalMoves: game.moves(),
-        legalMovesCount: game.moves().length,
-        attackedSquares: game.moves({ verbose: true }).map(m => m.to),
-        kingSquares: {
-          white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
-          black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
-        }
-      }
-    };
-
-    // Type payload for API service
-    const analysisRequest: AnalysisRequest = payload;
+    // Build analysis request payload
+    const analysisRequest = buildAnalysisPayload(game, move);
 
     // Comprehensive board state logging for LLM analysis
     console.log('Complete Chess Board State for LLM:', JSON.stringify(analysisRequest));
@@ -410,9 +400,6 @@ export const useChess = (): UseChessReturn => {
         setIsLoadingInsights(false);
       });
     
-    // Compact debug logging
-    console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
-    
     return true;
   }, [gameLog, isAiMode]);
 
@@ -428,57 +415,10 @@ export const useChess = (): UseChessReturn => {
       // Remove last insight from history when undoing a move
       setInsightsHistory(prev => prev.slice(0, -1));
       
-      // Enhanced board state logging after undo
+      // Log board state after undo
       const game = gameEngineRef.current.getChessInstance();
-      const currentPieces = boardToPieces(game);
-      const materialCount = countMaterial(currentPieces);
-      
-      const startingMaterial = {
-        white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
-        black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
-      };
-      const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
-      
-      const boardState = {
-        pieces: currentPieces,
-        fen: game.fen(),
-        turn: game.turn(),
-        moveNumber: game.moveNumber(),
-        halfmoveClock: game.fen().split(' ')[4],
-        fullmoveNumber: game.fen().split(' ')[5],
-        inCheck: game.inCheck(),
-        gameOver: game.isGameOver(),
-        checkmate: game.isCheckmate(),
-        stalemate: game.isStalemate(),
-        draw: game.isDraw(),
-        threefoldRepetition: game.isThreefoldRepetition(),
-        insufficientMaterial: game.isInsufficientMaterial(),
-        positionId: computePositionId(game.fen(), game.turn()),
-        legalMovesDetailed: computeLegalMovesDetailed(game)
-      };
-
-      console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify({
-        boardState,
-        materialCount,
-        capturedPieces,
-        moveHistory: {
-          san: game.history(),
-          uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
-          totalMoves: game.history().length,
-          currentPly: game.history().length
-        },
-        gameAnalysis: {
-          legalMoves: game.moves(),
-          legalMovesCount: game.moves().length,
-          attackedSquares: game.moves({ verbose: true }).map(m => m.to),
-          kingSquares: {
-            white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
-            black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
-          }
-        }
-      }));
-
-      console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
+      const analysisPayload = buildAnalysisPayload(game);
+      console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify(analysisPayload));
     }
   }, [updateGameState, gameLog]);
 
@@ -509,57 +449,10 @@ export const useChess = (): UseChessReturn => {
     console.log('[AI] AI state cleared during game reset');
     // Note: Don't reset isAiMode so user's preference persists
     
-    // Enhanced board state logging after reset
+    // Log board state after reset
     const game = gameEngineRef.current.getChessInstance();
-    const currentPieces = boardToPieces(game);
-    const materialCount = countMaterial(currentPieces);
-    
-    const startingMaterial = {
-      white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
-      black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
-    };
-    const capturedPieces = capturedFromMaterial(startingMaterial, materialCount);
-    
-    const boardState = {
-      pieces: currentPieces,
-      fen: game.fen(),
-      turn: game.turn(),
-      moveNumber: game.moveNumber(),
-      halfmoveClock: game.fen().split(' ')[4],
-      fullmoveNumber: game.fen().split(' ')[5],
-      inCheck: game.inCheck(),
-      gameOver: game.isGameOver(),
-      checkmate: game.isCheckmate(),
-      stalemate: game.isStalemate(),
-      draw: game.isDraw(),
-      threefoldRepetition: game.isThreefoldRepetition(),
-      insufficientMaterial: game.isInsufficientMaterial(),
-      positionId: computePositionId(game.fen(), game.turn()),
-      legalMovesDetailed: computeLegalMovesDetailed(game)
-    };
-
-    console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify({
-      boardState,
-      materialCount,
-      capturedPieces,
-      moveHistory: {
-        san: game.history(),
-        uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
-        totalMoves: game.history().length,
-        currentPly: game.history().length
-      },
-      gameAnalysis: {
-        legalMoves: game.moves(),
-        legalMovesCount: game.moves().length,
-        attackedSquares: game.moves({ verbose: true }).map(m => m.to),
-        kingSquares: {
-          white: currentPieces.find(p => p.type === 'k' && p.color === 'w')?.square,
-          black: currentPieces.find(p => p.type === 'k' && p.color === 'b')?.square
-        }
-      }
-    }));
-
-    console.debug('[BOARD_STATE+]', { pid: boardState.positionId, lm: boardState.legalMovesDetailed.length });
+    const analysisPayload = buildAnalysisPayload(game);
+    console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify(analysisPayload));
   }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]);
 
   /**
@@ -711,75 +604,15 @@ export const useChess = (): UseChessReturn => {
       setIsAiThinking(false);
       setPendingAiMove(null);
       
-      // Check for game over using AIPlayerService
-      const gameOverInfo = AIPlayerService.getGameOverInfo(game);
-      if (gameOverInfo.isOver) {
-        console.log('[AI] Game ended after AI move:', gameOverInfo);
+      // Check for game over
+      if (game.isGameOver()) {
+        console.log('[AI] Game ended after AI move');
         // No further AI processing needed
         return true;
       }
       
       // Call coaching API after AI move to continue analysis cycle
-      const moveInfo = toMoveInfo(moveResult);
-      
-      // Construct full board state payload matching the pattern from onPieceDrop
-      const aiMovePieces = boardToPieces(game);
-      const aiMoveMaterial = countMaterial(aiMovePieces);
-      const startingMaterial = {
-        white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
-        black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
-      };
-      const aiCapturedPieces = capturedFromMaterial(startingMaterial, aiMoveMaterial);
-      
-      const aiMoveboardState = {
-        pieces: aiMovePieces,
-        fen: game.fen(),
-        turn: game.turn(),
-        moveNumber: game.moveNumber(),
-        halfmoveClock: game.fen().split(' ')[4],
-        fullmoveNumber: game.fen().split(' ')[5],
-        inCheck: game.inCheck(),
-        gameOver: game.isGameOver(),
-        checkmate: game.isCheckmate(),
-        stalemate: game.isStalemate(),
-        draw: game.isDraw(),
-        threefoldRepetition: game.isThreefoldRepetition(),
-        insufficientMaterial: game.isInsufficientMaterial(),
-        positionId: computePositionId(game.fen(), game.turn()),
-        legalMovesDetailed: computeLegalMovesDetailed(game)
-      };
-      
-      const gradeRequest: AnalysisRequest = {
-        boardState: aiMoveboardState,
-        lastMove: {
-          san: moveInfo.san,
-          uci: moveInfo.uci,
-          from: moveInfo.from,
-          to: moveInfo.to,
-          piece: moveInfo.piece,
-          color: moveInfo.color,
-          captured: moveInfo.captured,
-          promotion: moveInfo.promotion,
-          flags: moveInfo.flags
-        },
-        materialCount: aiMoveMaterial,
-        capturedPieces: aiCapturedPieces,
-        moveHistory: {
-          san: game.history(),
-          uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
-          totalMoves: game.history().length,
-          currentPly: game.history().length
-        },
-        gameAnalysis: {
-          legalMoves: game.moves(),
-          legalMovesCount: game.moves().length,
-          attackedSquares: game.moves({ verbose: true }).map(m => m.to),
-          kingSquares: {
-            white: aiMovePieces.find(p => p.type === 'k' && p.color === 'w')?.square,
-            black: aiMovePieces.find(p => p.type === 'k' && p.color === 'b')?.square
-          }
-        }
-      };
+      const gradeRequest = buildAnalysisPayload(game, moveResult);
       
       // Set loading state before API call (matching normal user move flow)
       setIsLoadingInsights(true);
