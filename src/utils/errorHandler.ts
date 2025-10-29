@@ -20,6 +20,9 @@ import {
   isPersistenceError
 } from '../types/errors';
 
+// Re-export type guards for convenience
+export { isAppError, isAPIError, isPersistenceError, isGameError, isValidationError } from '../types/errors';
+
 /**
  * Map error codes to user-friendly messages
  */

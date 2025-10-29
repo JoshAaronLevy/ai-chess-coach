@@ -4,12 +4,13 @@ import { useGameLog } from './useGameLog.js';
 import { boardToPieces, countMaterial, capturedFromMaterial, toMoveInfo } from './serializers.js';
 import type { LegalMoveDetailed, PieceType, MoveInsights } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
-import { postCoachGrade } from '../lib/coachApi';
-import { parseDifyAnswer, type TutorInsights } from '../utils/difyParser';
+import { type TutorInsights } from '../utils/difyParser';
 import { applyUciMove } from '../utils/uci.js';
 import { useAiDifficultyStore } from '../store/aiDifficultyStore';
 import { BoardStateManager } from '../services/BoardStateManager.js';
 import { ChessGameEngine } from '../services/ChessGameEngine.js';
+import { ChessCoachApiService } from '../services/ChessCoachApiService.js';
+import type { AnalysisRequest } from '../types/api.js';
 
 console.info('[USE_CHESS_INIT]');
 
@@ -370,11 +371,14 @@ export const useChess = (): UseChessReturn => {
       }
     };
 
+    // Type payload for API service
+    const analysisRequest: AnalysisRequest = payload;
+
     // Comprehensive board state logging for LLM analysis
-    console.log('Complete Chess Board State for LLM:', JSON.stringify(payload));
+    console.log('Complete Chess Board State for LLM:', JSON.stringify(analysisRequest));
 
     // Send board state to coach API for analysis
-    console.log('[COACH] API call takes flight with payload:', payload);
+    console.log('[COACH] API call takes flight with payload:', analysisRequest);
     setIsLoadingInsights(true);
     setInsightsError(null);
     
@@ -383,19 +387,18 @@ export const useChess = (): UseChessReturn => {
       setIsAiThinking(true);
     }
     
-    postCoachGrade(payload)
+    ChessCoachApiService.analyzePosition(analysisRequest)
       .then(resp => {
-        // Parse and store insights in state
-        const parsedInsights = parseDifyAnswer(resp);
+        // Service returns parsed insights directly (TutorInsights)
+        const parsedInsights = resp;
         console.log('[AI Tutor Insights]', JSON.stringify(parsedInsights));
         
-        if (parsedInsights) {
-          setInsights(parsedInsights);
-          setHasNewInsights(true);
-          setInsightsError(null);
-          
-          // Create and add move insight to history
-          const moveInsight: MoveInsights = {
+        setInsights(parsedInsights);
+        setHasNewInsights(true);
+        setInsightsError(null);
+        
+        // Create and add move insight to history
+        const moveInsight: MoveInsights = {
             moveNumber: historySan.length, // Current move count after the move
             san: lastSan || '',
             fromSquare: lastMoveFrom || '',
@@ -488,117 +491,28 @@ export const useChess = (): UseChessReturn => {
               setIsAiThinking(false);
             }
           }
-        } else {
-          setInsightsError('Failed to parse coach response');
-        }
       })
       .catch(err => {
-        // Keep existing error log
-        console.log('[COACH] API call completed with error:', JSON.stringify(err));
+        // Service already attempted to parse insights from error response
+        // If we're here, the API call failed and no insights could be extracted
+        console.log('[COACH] API call failed:', err instanceof Error ? err.message : String(err));
         
-        // Try to parse insights from error response
-        const parsedInsights = parseDifyAnswer(err);
-        console.log('[AI Tutor Insights]', parsedInsights);
+        setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
         
-        if (parsedInsights) {
-          setInsights(parsedInsights);
-          setHasNewInsights(true);
-          setInsightsError(null);
+        // Update turn state even on complete API failure
+        setTurn(game.turn());
+        console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', game.turn());
+        
+        // Enhanced AI-specific error cleanup
+        if (isAiMode) {
+          console.log('[AI] Clearing AI state due to API error');
+          setIsAiThinking(false);
+          setPendingAiMove(null);
           
-          // Update turn state even if parsed from error response
-          setTurn(game.turn());
-          console.log('[TURN_DEBUG] API call failed but insights parsed - Turn updated to:', game.turn());
-          
-          // Enhanced AI move validation and side checking with difficulty-based selection (error case)
-          if (isAiMode && game.turn() === aiColor && !game.isGameOver()) {
-            // Validate that the move is for the correct side
-            const expectedSide = game.turn(); // Should be 'b' for AI
-            if (expectedSide !== aiColor) {
-              console.warn('[AI] Move returned for wrong side. Expected:', aiColor, 'Current turn:', expectedSide);
-              setIsAiThinking(false);
-              return;
-            }
-            
-            // Double-check game state before proceeding
-            if (game.isGameOver()) {
-              console.log('[AI] Game ended before AI could move');
-              setIsAiThinking(false);
-              return;
-            }
-            
-            // Use difficulty-based move selection if available, fallback to bestMove
-            if (parsedInsights.next_moves) {
-              console.log('[DEBUG] Calling pickAiMoveForDifficulty with:', { difficulty, next_moves: parsedInsights.next_moves });
-              const moveSelection = pickAiMoveForDifficulty(difficulty, parsedInsights.next_moves);
-              console.log('[DEBUG] pickAiMoveForDifficulty returned:', moveSelection);
-              
-              if (moveSelection) {
-                console.log('[DEBUG] Attempting to apply selected move:', moveSelection.move);
-                // Try to apply the selected move
-                const moveResult = applyUciOrSan(game, moveSelection.move);
-                console.log('[DEBUG] applyUciOrSan result:', moveResult);
-                
-                if (moveResult) {
-                  console.log('[AI Move] difficulty=', difficulty, 'selected=', moveSelection.move, 'fallbackUsed=', moveSelection.fallbackUsed);
-                  
-                  // Convert to the format expected by handleAiMoveResponse
-                  const aiMove = {
-                    uci: moveSelection.move.uci || '',
-                    san: moveSelection.move.san || moveResult.san
-                  };
-                  
-                  console.log('[DEBUG] Converted aiMove for handleAiMoveResponse:', aiMove);
-                  // Undo the test move and let handleAiMoveResponse apply it properly
-                  game.undo();
-                  handleAiMoveResponse(aiMove);
-                } else {
-                  console.warn('[AI] Selected difficulty-based move is illegal, trying fallback to bestMove');
-                  if (parsedInsights.bestMove) {
-                    console.log('[DEBUG] Using bestMove fallback:', parsedInsights.bestMove);
-                    handleAiMoveResponse(parsedInsights.bestMove);
-                  } else {
-                    console.warn('[AI] No legal moves available');
-                    setIsAiThinking(false);
-                  }
-                }
-              } else {
-                console.warn('[AI] No moves found for difficulty level, trying fallback to bestMove');
-                if (parsedInsights.bestMove) {
-                  console.log('[DEBUG] Using bestMove fallback after difficulty selection failed:', parsedInsights.bestMove);
-                  handleAiMoveResponse(parsedInsights.bestMove);
-                } else {
-                  console.warn('[AI] No bestMove fallback available');
-                  setIsAiThinking(false);
-                }
-              }
-            } else if (parsedInsights.bestMove) {
-              // Fallback to original bestMove logic when difficulty not set or next_moves not available
-              console.log('[DEBUG] Using bestMove because difficulty is null or next_moves unavailable:', parsedInsights.bestMove);
-              handleAiMoveResponse(parsedInsights.bestMove);
-            } else {
-              console.warn('[AI] AI mode enabled but no moves found in API response');
-              console.log('[DEBUG] Final state - difficulty:', difficulty, 'next_moves:', !!parsedInsights.next_moves, 'bestMove:', !!parsedInsights.bestMove);
-              setIsAiThinking(false);
-            }
-          }
-        } else {
-          setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
-          
-          // Update turn state even on complete API failure
-          setTurn(game.turn());
-          console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', game.turn());
-          
-          // Enhanced AI-specific error cleanup
-          if (isAiMode) {
-            console.log('[AI] Clearing AI state due to API error');
-            setIsAiThinking(false);
-            setPendingAiMove(null);
-            
-            // Clear any pending timeouts
-            if (aiMoveTimeout) {
-              clearTimeout(aiMoveTimeout);
-              setAiMoveTimeout(null);
-            }
+          // Clear any pending timeouts
+          if (aiMoveTimeout) {
+            clearTimeout(aiMoveTimeout);
+            setAiMoveTimeout(null);
           }
         }
       })
@@ -928,38 +842,81 @@ export const useChess = (): UseChessReturn => {
       
       // Call coaching API after AI move to continue analysis cycle
       const moveInfo = toMoveInfo(moveResult);
-      const gradeRequest = {
-        chess_position: game.fen(),
-        previous_move_uci: moveInfo.uci,
-        previous_move_san: moveInfo.san
+      
+      // Construct full board state payload matching the pattern from onPieceDrop
+      const aiMovePieces = boardToPieces(game);
+      const aiMoveMaterial = countMaterial(aiMovePieces);
+      const startingMaterial = {
+        white: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 },
+        black: { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 }
+      };
+      const aiCapturedPieces = capturedFromMaterial(startingMaterial, aiMoveMaterial);
+      
+      const aiMoveboardState = {
+        pieces: aiMovePieces,
+        fen: game.fen(),
+        turn: game.turn(),
+        moveNumber: game.moveNumber(),
+        halfmoveClock: game.fen().split(' ')[4],
+        fullmoveNumber: game.fen().split(' ')[5],
+        inCheck: game.inCheck(),
+        gameOver: game.isGameOver(),
+        checkmate: game.isCheckmate(),
+        stalemate: game.isStalemate(),
+        draw: game.isDraw(),
+        threefoldRepetition: game.isThreefoldRepetition(),
+        insufficientMaterial: game.isInsufficientMaterial(),
+        positionId: computePositionId(game.fen(), game.turn()),
+        legalMovesDetailed: computeLegalMovesDetailed(game)
+      };
+      
+      const gradeRequest: AnalysisRequest = {
+        boardState: aiMoveboardState,
+        lastMove: {
+          san: moveInfo.san,
+          uci: moveInfo.uci,
+          from: moveInfo.from,
+          to: moveInfo.to,
+          piece: moveInfo.piece,
+          color: moveInfo.color,
+          captured: moveInfo.captured,
+          promotion: moveInfo.promotion,
+          flags: moveInfo.flags
+        },
+        materialCount: aiMoveMaterial,
+        capturedPieces: aiCapturedPieces,
+        moveHistory: {
+          san: game.history(),
+          uci: game.history({ verbose: true }).map(m => toMoveInfo(m).uci),
+          totalMoves: game.history().length,
+          currentPly: game.history().length
+        },
+        gameAnalysis: {
+          legalMoves: game.moves(),
+          legalMovesCount: game.moves().length,
+          attackedSquares: game.moves({ verbose: true }).map(m => m.to),
+          kingSquares: {
+            white: aiMovePieces.find(p => p.type === 'k' && p.color === 'w')?.square,
+            black: aiMovePieces.find(p => p.type === 'k' && p.color === 'b')?.square
+          }
+        }
       };
       
       // Set loading state before API call (matching normal user move flow)
       setIsLoadingInsights(true);
       setInsightsError(null);
       
-      postCoachGrade(gradeRequest)
-        .then(response => {
+      ChessCoachApiService.analyzePosition(gradeRequest)
+        .then(parsedInsights => {
           console.log('[AI] Coach analysis completed after AI move');
-          // Parse and potentially use insights, but don't trigger another AI move
-          const parsedInsights = parseDifyAnswer(response);
-          if (parsedInsights) {
-            setInsights(parsedInsights);
-            setHasNewInsights(true);
-            setInsightsError(null);
-          }
+          // Service returns parsed insights directly
+          setInsights(parsedInsights);
+          setHasNewInsights(true);
+          setInsightsError(null);
         })
         .catch(err => {
           console.log('[AI] Coach analysis failed after AI move:', err);
-          // Try to parse insights from error response
-          const parsedInsights = parseDifyAnswer(err);
-          if (parsedInsights) {
-            setInsights(parsedInsights);
-            setHasNewInsights(true);
-            setInsightsError(null);
-          } else {
-            setInsightsError('Failed to get coaching analysis after AI move');
-          }
+          setInsightsError('Failed to get coaching analysis after AI move');
         })
         .finally(() => {
           setIsLoadingInsights(false);
