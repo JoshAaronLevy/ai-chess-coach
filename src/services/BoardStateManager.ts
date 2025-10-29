@@ -12,12 +12,13 @@ import type {
   CleanupOptions,
   CleanupResult
 } from '../types/persistence';
-import { ErrorCode, PersistenceError } from '../types/errors';
 import { 
+  ErrorCode, 
+  AppError,
   createQuotaExceededError, 
   createStorageUnavailableError,
   createValidationError 
-} from '../utils/errorHandler';
+} from '../utils/errors';
 
 /**
  * BoardStateManager - Service for managing chess game persistence
@@ -121,10 +122,9 @@ export class BoardStateManager {
         key: storageKey
       };
     } catch (error) {
-      const persistenceError = new PersistenceError(
+      const persistenceError = new AppError(
         error instanceof Error ? error.message : 'Failed to save game',
-        ErrorCode.PERSISTENCE_SAVE_FAILED,
-        'save'
+        ErrorCode.STORAGE_ERROR
       );
       console.error('[BoardStateManager] Failed to save game:', persistenceError.message);
       return {
@@ -146,10 +146,9 @@ export class BoardStateManager {
       const allSavedGames = this.getAllSavedGames();
 
       if (allSavedGames.length === 0) {
-        const notFoundError = new PersistenceError(
+        const notFoundError = new AppError(
           'No saved games found',
-          ErrorCode.PERSISTENCE_NOT_FOUND,
-          'load'
+          ErrorCode.STORAGE_ERROR
         );
         return {
           success: false,
@@ -164,10 +163,9 @@ export class BoardStateManager {
       // Validate the saved game data
       const validationResult = this.validateSavedGame(mostRecentSave);
       if (!validationResult.success) {
-        const corruptedError = new PersistenceError(
+        const corruptedError = new AppError(
           validationResult.error || 'Corrupted game data',
-          ErrorCode.PERSISTENCE_CORRUPTED_DATA,
-          'load'
+          ErrorCode.STORAGE_ERROR
         );
         return {
           success: false,
@@ -188,10 +186,9 @@ export class BoardStateManager {
       };
       
     } catch (error) {
-      const loadError = new PersistenceError(
+      const loadError = new AppError(
         error instanceof Error ? error.message : 'Failed to load saved game',
-        ErrorCode.PERSISTENCE_LOAD_FAILED,
-        'load'
+        ErrorCode.STORAGE_ERROR
       );
       console.error('[BoardStateManager] Failed to load saved game:', loadError.message);
       return {

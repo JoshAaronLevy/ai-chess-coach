@@ -198,22 +198,6 @@ export class AIPlayerService {
   }
 
   /**
-   * Test if a move is legal without actually applying it.
-   * Creates a temporary game instance to test the move.
-   * 
-   * @param game - Chess.js instance
-   * @param move - Move to test
-   * @returns True if move is legal, false otherwise
-   */
-  static isLegalMove(game: Chess, move: AiMove): boolean {
-    // Create a copy to test the move
-    const testGame = new (game.constructor as typeof Chess)(game.fen());
-    
-    const result = this.executeMove(testGame, move);
-    return result !== null;
-  }
-
-  /**
    * Schedule an AI move with natural delay and timeout protection.
    * 
    * Returns a timeout ID that can be used to cancel the scheduled move.
@@ -260,18 +244,6 @@ export class AIPlayerService {
   }
 
   /**
-   * Cancel a scheduled move by clearing both the delay and timeout timers.
-   * 
-   * @param delayTimeoutId - Timeout ID from scheduleMove
-   * @param protectionTimeoutId - Protection timeout ID from scheduleMove
-   */
-  static cancelScheduledMove(delayTimeoutId: number, protectionTimeoutId: number): void {
-    console.log('[AIPlayerService] Cancelling scheduled move');
-    clearTimeout(delayTimeoutId);
-    clearTimeout(protectionTimeoutId);
-  }
-
-  /**
    * Validate if it's the AI's turn to move.
    * 
    * @param game - Chess.js instance
@@ -280,29 +252,5 @@ export class AIPlayerService {
    */
   static isAiTurn(game: Chess, aiColor: 'w' | 'b'): boolean {
     return !game.isGameOver() && game.turn() === aiColor;
-  }
-
-  /**
-   * Get detailed game over information.
-   * 
-   * @param game - Chess.js instance
-   * @returns Object with game over state details
-   */
-  static getGameOverInfo(game: Chess): {
-    isOver: boolean;
-    isCheckmate: boolean;
-    isStalemate: boolean;
-    isDraw: boolean;
-    isThreefoldRepetition: boolean;
-    isInsufficientMaterial: boolean;
-  } {
-    return {
-      isOver: game.isGameOver(),
-      isCheckmate: game.isCheckmate(),
-      isStalemate: game.isStalemate(),
-      isDraw: game.isDraw(),
-      isThreefoldRepetition: game.isThreefoldRepetition(),
-      isInsufficientMaterial: game.isInsufficientMaterial()
-    };
   }
 }

@@ -1,12 +1,8 @@
 import { 
-  createTimeoutError, 
   createAPIErrorFromResponse, 
-  createNetworkError 
-} from '../utils/errorHandler';
-
-/**
- * Default API timeout in milliseconds (30 seconds)
- */
+  createNetworkError,
+  APIError
+} from '../utils/errors';
 const API_TIMEOUT_MS = 30000;
 
 function getApiBaseUrl(): string {
@@ -70,7 +66,7 @@ export async function postCoachGrade(
 
     // Handle abort (timeout)
     if (error instanceof Error && error.name === 'AbortError') {
-      throw createTimeoutError(endpoint, API_TIMEOUT_MS);
+      throw new APIError(`Request to ${endpoint} timed out after ${API_TIMEOUT_MS}ms`, undefined, endpoint);
     }
 
     // Handle network errors

@@ -2,8 +2,7 @@
 import { Chess } from 'chess.js';
 import type { LegalMoveDetailed, PieceType } from '../types/chess.js';
 import { hashPositionId } from '../utils/hash.js';
-import { ErrorCode, GameError } from '../types/errors';
-import { createInvalidMoveError, createInvalidFenError } from '../utils/errorHandler';
+import { ErrorCode, AppError, createInvalidMoveError, createInvalidFenError } from '../utils/errors';
 
 /**
  * Type for chess piece colors
@@ -92,9 +91,9 @@ export class ChessGameEngine {
       }
     } catch (error) {
       const moveStr = typeof move === 'string' ? move : `${move.from}${move.to}`;
-      const gameError = new GameError(
+      const gameError = new AppError(
         error instanceof Error ? error.message : 'Invalid move',
-        ErrorCode.GAME_INVALID_MOVE,
+        ErrorCode.GAME_ERROR,
         { move: moveStr, fen: this.game.fen() }
       );
       return {
@@ -169,19 +168,6 @@ export class ChessGameEngine {
   }
 
   /**
-   * Get legal moves
-   * 
-   * @param square - Optional square to get moves for
-   * @returns Array of legal moves in SAN notation
-   */
-  moves(square?: string): string[] {
-    if (square) {
-      return this.game.moves({ square: square as any });
-    }
-    return this.game.moves();
-  }
-
-  /**
    * Get legal moves in verbose format
    */
   movesVerbose(): any[] {
@@ -245,16 +231,6 @@ export class ChessGameEngine {
   }
 
   /**
-   * Get detailed legal moves with check detection
-   * 
-   * This computes additional information about each legal move including
-   * whether it gives check to the opponent.
-   */
-  getLegalMovesDetailed(): LegalMoveDetailed[] {
-    return ChessGameEngine.computeLegalMovesDetailed(this.game);
-  }
-
-  /**
    * Get a comprehensive snapshot of the current game state
    * 
    * @returns GameState object with all relevant game information
@@ -303,7 +279,7 @@ export class ChessGameEngine {
       gameResult,
       moveNumber: this.game.moveNumber(),
       legalMoves: this.game.moves(),
-      legalMovesDetailed: this.getLegalMovesDetailed(),
+      legalMovesDetailed: ChessGameEngine.computeLegalMovesDetailed(this.game),
       positionId: ChessGameEngine.computePositionId(this.game.fen(), this.game.turn())
     };
   }
@@ -367,28 +343,5 @@ export class ChessGameEngine {
    */
   static computePositionId(fen: string, turn: 'w' | 'b'): string {
     return hashPositionId(`${fen}|${turn}`);
-  }
-
-  /**
-   * Static helper: Apply UCI or SAN move to a game instance
-   * 
-   * @param game - Chess.js instance
-   * @param moveData - Object with optional uci and san properties
-   * @returns Move result or null if move failed
-   */
-  static applyUciOrSan(
-    game: Chess, 
-    moveData: { uci?: string | null; san?: string | null }
-  ): any | null {
-    if (moveData.uci && moveData.uci.length >= 4) {
-      const from = moveData.uci.slice(0, 2);
-      const to = moveData.uci.slice(2, 4);
-      const promotion = moveData.uci.length === 5 ? moveData.uci[4] : undefined;
-      return game.move({ from, to, promotion });
-    }
-    if (moveData.san) {
-      return game.move(moveData.san);
-    }
-    return null;
   }
 }
