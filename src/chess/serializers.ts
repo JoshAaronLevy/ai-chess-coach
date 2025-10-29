@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Chess } from 'chess.js';
 import type { SquarePiece, MaterialCount, MoveInfo, Color, PieceType } from '../types/gameLog.js';
 
