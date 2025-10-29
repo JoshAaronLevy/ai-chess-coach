@@ -181,15 +181,20 @@ export const useChess = (): UseChessReturn => {
   // Get difficulty setting from store
   const { difficulty } = useAiDifficultyStore();
   
-  // Game state derived from gameEngineRef.current
-  const [fen, setFen] = useState<string>(gameEngineRef.current.fen());
-  const [turn, setTurn] = useState<ChessColor>(gameEngineRef.current.turn());
-  const [historySan, setHistorySan] = useState<string[]>([]);
-  const [lastSan, setLastSan] = useState<string | undefined>(undefined);
-  const [lastMoveFrom, setLastMoveFrom] = useState<string | undefined>(undefined);
-  const [lastMoveTo, setLastMoveTo] = useState<string | undefined>(undefined);
-  const [gameOver, setGameOver] = useState<boolean>(false);
-  const [gameResult, setGameResult] = useState<string | undefined>(undefined);
+  // Single state variable to trigger re-renders when game engine changes
+  // Increment this counter whenever the engine state is modified
+  const [engineVersion, setEngineVersion] = useState(0);
+  
+  // Derive all game-related state from the engine (single source of truth)
+  const fen = useMemo(() => gameEngineRef.current.fen(), [engineVersion]);
+  const turn = useMemo(() => gameEngineRef.current.turn(), [engineVersion]);
+  const historySan = useMemo(() => gameEngineRef.current.history(), [engineVersion]);
+  const gameState = useMemo(() => gameEngineRef.current.getGameState(), [engineVersion]);
+  const lastSan = gameState.lastMove?.san;
+  const lastMoveFrom = gameState.lastMove?.from;
+  const lastMoveTo = gameState.lastMove?.to;
+  const gameOver = gameState.isGameOver;
+  const gameResult = gameState.gameResult;
 
   // Coach insights state
   const [insights, setInsights] = useState<TutorInsights | null>(null);
@@ -226,37 +231,26 @@ export const useChess = (): UseChessReturn => {
   }, [checkHasSavedGame, gameLog]);
 
   /**
-   * Check if current game state differs from the most recently saved state
+   * Trigger a re-render by incrementing the engine version
+   * Call this after any operation that modifies the game engine state
    */
-  const checkStateDifference = useCallback(() => {
+  const refreshGameState = useCallback(() => {
+    setEngineVersion(v => v + 1);
+    // Check if current state differs from saved state
     const currentState = {
       fen: gameEngineRef.current.fen(),
       historySan: gameEngineRef.current.history(),
       isAiMode: isAiMode
     };
-
     const isDifferent = BoardStateManager.isStateDifferent(currentState);
     setIsStateDifferentFromSaved(isDifferent);
   }, [isAiMode]);
 
   /**
    * Updates all state variables based on current chess game engine
+   * @deprecated Use refreshGameState() instead
    */
-  const updateGameState = useCallback(() => {
-    const state = gameEngineRef.current.getGameState();
-    
-    setFen(state.fen);
-    setTurn(state.turn);
-    setHistorySan(state.history);
-    setLastSan(state.lastMove?.san);
-    setLastMoveFrom(state.lastMove?.from);
-    setLastMoveTo(state.lastMove?.to);
-    setGameOver(state.isGameOver);
-    setGameResult(state.gameResult);
-
-    // Check if current state differs from saved state
-    checkStateDifference();
-  }, [checkStateDifference]);
+  const updateGameState = refreshGameState;
 
   /**
    * Handle piece drops from react-chessboard
@@ -271,22 +265,8 @@ export const useChess = (): UseChessReturn => {
     console.log('[DROP]', { from, to, move, fen: game.fen() });
     if (move == null) return false;
     
-    // DEBUG: Log turn state before move
-    console.log('[TURN_DEBUG] Before move - Chess.js turn:', game.turn(), 'React turn state:', turn);
-    
-    // Update UI state (but NOT turn yet - wait for API completion)
-    setFen(game.fen());
-    setLastSan(move.san);
-    setLastMoveFrom(move.from);
-    setLastMoveTo(move.to);
-    setHistorySan(game.history());
-    setGameOver(game.isGameOver());
-    
-    // Update game state to trigger save button state check
-    updateGameState();
-    
-    // DEBUG: Turn will be updated after API call completes
-    console.log('[TURN_DEBUG] Move applied, waiting for API completion to update turn display');
+    // Trigger re-render to reflect the move
+    refreshGameState();
     
     // Record move in game log
     gameLog.recordAfterMove(game, move);
@@ -327,10 +307,6 @@ export const useChess = (): UseChessReturn => {
             timestamp: Date.now()
           };
           setInsightsHistory(prev => [...prev, moveInsight]);
-          
-          // Update turn state now that API call completed successfully
-          setTurn(game.turn());
-          console.log('[TURN_DEBUG] API call succeeded - Turn updated to:', game.turn());
           
           // Enhanced AI move validation and side checking with difficulty-based selection
           if (isAiMode && game.turn() === aiColor && !game.isGameOver()) {
@@ -379,10 +355,6 @@ export const useChess = (): UseChessReturn => {
         
         setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
         
-        // Update turn state even on complete API failure
-        setTurn(game.turn());
-        console.log('[TURN_DEBUG] API call failed completely - Turn updated to:', game.turn());
-        
         // Enhanced AI-specific error cleanup
         if (isAiMode) {
           console.log('[AI] Clearing AI state due to API error');
@@ -401,7 +373,18 @@ export const useChess = (): UseChessReturn => {
       });
     
     return true;
-  }, [gameLog, isAiMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    gameLog,
+    isAiMode,
+    refreshGameState,
+    aiMoveTimeout,
+    difficulty,
+    lastSan,
+    lastMoveFrom,
+    lastMoveTo,
+    historySan
+  ]); // Note: handleAiMoveResponse creates circular dependency, used via closure
 
   /**
    * Undo the last move
@@ -453,7 +436,10 @@ export const useChess = (): UseChessReturn => {
     const game = gameEngineRef.current.getChessInstance();
     const analysisPayload = buildAnalysisPayload(game);
     console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify(analysisPayload));
-  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateGameState, gameLog, checkHasSavedGame, aiMoveTimeout]); // clearInsights creates circular dependency
+
+
 
   /**
    * Check if the game has ended
@@ -551,7 +537,9 @@ export const useChess = (): UseChessReturn => {
 
     // Store the protection timeout ID for cleanup
     setAiMoveTimeout(protectionTimeoutId);
-  }, [isAiMode]); // executeAiMove is defined later, called via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAiMode]); // executeAiMove is defined later, creates circular dependency
+
 
   /**
    * Execute AI move and update game state with race condition protection
@@ -662,15 +650,15 @@ export const useChess = (): UseChessReturn => {
     );
 
     if (result.success) {
-      // Update state difference check after saving
-      checkStateDifference();
+      // Refresh game state to update save tracking
+      refreshGameState();
       
       // Update hasSavedGame state after successful save
       setHasSavedGame(true);
     }
 
     return result.success;
-  }, [historySan, isAiMode, checkStateDifference]);
+  }, [historySan, isAiMode, refreshGameState]);
 
   /**
    * Load the most recent saved game from localStorage
