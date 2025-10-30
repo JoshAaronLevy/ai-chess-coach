@@ -257,13 +257,15 @@ export const useChess = (): UseChessReturn => {
           moveNumber: game.history().length,
           san: move.san,
           from: move.from,
-          to: move.to
+          to: move.to,
+          color: move.color
         });
         const moveInsight: MoveInsights = {
             moveNumber: game.history().length, // Actual move count after the move
             san: move.san,
             fromSquare: move.from,
             toSquare: move.to,
+            color: move.color, // 'w' or 'b' from the move object
             insights: parsedInsights,
             timestamp: Date.now()
           };
@@ -526,7 +528,8 @@ export const useChess = (): UseChessReturn => {
             moveNumber: game.history().length,
             san: moveResult.san,
             from: moveResult.from,
-            to: moveResult.to
+            to: moveResult.to,
+            color: moveResult.color
           });
           
           // Service returns parsed insights directly
@@ -540,6 +543,7 @@ export const useChess = (): UseChessReturn => {
             san: moveResult.san,
             fromSquare: moveResult.from,
             toSquare: moveResult.to,
+            color: moveResult.color, // 'b' for AI (black)
             insights: parsedInsights,
             timestamp: Date.now()
           };

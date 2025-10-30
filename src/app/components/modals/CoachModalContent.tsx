@@ -136,18 +136,18 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
               {insightsHistory.slice().reverse().map((moveInsight) => {
                 const moveNumber = moveInsight.moveNumber;
                 const grade = moveInsight.insights.lastMove?.grade || '';
-                const isWhiteMove = moveNumber % 2 === 1; // Odd = white, even = black
+                const isWhiteMove = moveInsight.color === 'w'; // 'w' = white/user, 'b' = black/AI
                 
-                // Header styling
+                // Header styling: light theme for user (white), dark theme for AI (black)
                 const headerStyle = {
-                  backgroundColor: isWhiteMove ? '#ffffff' : '#2d2d2d',
+                  backgroundColor: isWhiteMove ? '#f8f9fa' : '#2d2d2d',
                   color: isWhiteMove ? '#000000' : '#ffffff',
                 };
                 
                 return (
                   <AccordionTab
                     key={moveInsight.timestamp}
-                    header={`Move ${moveNumber} - ${grade}`}
+                    header={`Move ${moveNumber} - ${grade} ${isWhiteMove ? '(User)' : '(AI)'}`}
                     headerClassName="font-semibold"
                     headerStyle={headerStyle}
                   >
