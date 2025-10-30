@@ -252,11 +252,12 @@ export const useChess = (): UseChessReturn => {
         setInsightsError(null);
         
         // Create and add move insight to history
+        // Use the move object directly to avoid stale closure values
         const moveInsight: MoveInsights = {
-            moveNumber: historySan.length, // Current move count after the move
-            san: lastSan || '',
-            fromSquare: lastMoveFrom || '',
-            toSquare: lastMoveTo || '',
+            moveNumber: game.history().length, // Actual move count after the move
+            san: move.san,
+            fromSquare: move.from,
+            toSquare: move.to,
             insights: parsedInsights,
             timestamp: Date.now()
           };
@@ -514,6 +515,17 @@ export const useChess = (): UseChessReturn => {
           setInsights(parsedInsights);
           setHasNewInsights(true);
           setInsightsError(null);
+          
+          // Add AI move insight to history
+          const aiMoveInsight: MoveInsights = {
+            moveNumber: game.history().length, // Actual move count after AI move
+            san: moveResult.san,
+            fromSquare: moveResult.from,
+            toSquare: moveResult.to,
+            insights: parsedInsights,
+            timestamp: Date.now()
+          };
+          setInsightsHistory(prev => [...prev, aiMoveInsight]);
         })
         .catch(err => {
           console.log('[AI] Coach analysis failed after AI move:', err);
