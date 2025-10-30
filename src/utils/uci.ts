@@ -1,18 +1,55 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Chess } from 'chess.js';
 
-/**
- * Validate UCI move format (e.g., "e2e4", "e7e8q")
- */
-export function isValidUciFormat(uci: string): boolean {
-  return /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci);
+export interface ChessMoveObject {
+  from: string;
+  to: string;
+  promotion?: string;
 }
 
-/**
- * Convert UCI notation to chess.js move and apply it
- * @param game - The chess.js instance
- * @param uci - UCI move notation (e.g., "e2e4", "e7e8q")
- * @returns The move object if successful, null if invalid
- */
+export function isValidUciFormat(uci: string): boolean {
+  if (!uci || typeof uci !== 'string') {
+    return false;
+  }
+
+  if (uci.length !== 4 && uci.length !== 5) {
+    return false;
+  }
+
+  const uciPattern = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
+  
+  return uciPattern.test(uci);
+}
+
+export function parseUciMove(uci: string): ChessMoveObject | null {
+  if (!isValidUciFormat(uci)) {
+    return null;
+  }
+
+  const from = uci.slice(0, 2);
+  const to = uci.slice(2, 4);
+  
+  let promotion: string | undefined;
+  if (uci.length === 5) {
+    promotion = uci[4];
+  } else if (uci.length === 4) {
+    const fromRank = parseInt(from[1]);
+    const toRank = parseInt(to[1]);
+    
+    if ((fromRank === 7 && toRank === 8) || (fromRank === 2 && toRank === 1)) {
+      promotion = 'q';
+    }
+  }
+
+  const moveObject: ChessMoveObject = { from, to };
+  
+  if (promotion) {
+    moveObject.promotion = promotion;
+  }
+
+  return moveObject;
+}
+
 export function applyUciMove(game: Chess, uci: string): any | null {
   if (!isValidUciFormat(uci)) {
     console.warn('[UCI] Invalid UCI format:', uci);
@@ -35,11 +72,6 @@ export function applyUciMove(game: Chess, uci: string): any | null {
   }
 }
 
-/**
- * Convert chess.js move object to UCI notation
- * @param move - chess.js move object
- * @returns UCI notation string
- */
 export function moveToUci(move: any): string {
   if (!move || !move.from || !move.to) {
     return '';
@@ -48,12 +80,6 @@ export function moveToUci(move: any): string {
   return move.from + move.to + (move.promotion || '');
 }
 
-/**
- * Validate that a UCI move is legal in the current position
- * @param game - The chess.js instance
- * @param uci - UCI move notation
- * @returns true if the move is legal, false otherwise
- */
 export function isLegalUciMove(game: Chess, uci: string): boolean {
   if (!isValidUciFormat(uci)) {
     return false;
@@ -63,7 +89,6 @@ export function isLegalUciMove(game: Chess, uci: string): boolean {
   const to = uci.slice(2, 4);
   const promotion = uci.length > 4 ? uci[4] : undefined;
 
-  // Create a clone to test the move without affecting the original game
   const testGame = new Chess(game.fen());
   try {
     const move = testGame.move({ from, to, promotion });
