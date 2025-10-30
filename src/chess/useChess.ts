@@ -253,6 +253,12 @@ export const useChess = (): UseChessReturn => {
         
         // Create and add move insight to history
         // Use the move object directly to avoid stale closure values
+        console.log('[USER] Creating user move insight with:', {
+          moveNumber: game.history().length,
+          san: move.san,
+          from: move.from,
+          to: move.to
+        });
         const moveInsight: MoveInsights = {
             moveNumber: game.history().length, // Actual move count after the move
             san: move.san,
@@ -261,7 +267,12 @@ export const useChess = (): UseChessReturn => {
             insights: parsedInsights,
             timestamp: Date.now()
           };
-          setInsightsHistory(prev => [...prev, moveInsight]);
+          console.log('[USER] Adding user move insight to history:', moveInsight);
+          setInsightsHistory(prev => {
+            const newHistory = [...prev, moveInsight];
+            console.log('[USER] New insights history length:', newHistory.length);
+            return newHistory;
+          });
           
           // Enhanced AI move validation and side checking with difficulty-based selection
           if (isAiMode && game.turn() === aiColor && !game.isGameOver()) {
@@ -511,6 +522,13 @@ export const useChess = (): UseChessReturn => {
       ChessCoachApiService.analyzePosition(gradeRequest)
         .then(parsedInsights => {
           console.log('[AI] Coach analysis completed after AI move');
+          console.log('[AI] Creating AI move insight with:', {
+            moveNumber: game.history().length,
+            san: moveResult.san,
+            from: moveResult.from,
+            to: moveResult.to
+          });
+          
           // Service returns parsed insights directly
           setInsights(parsedInsights);
           setHasNewInsights(true);
@@ -525,7 +543,12 @@ export const useChess = (): UseChessReturn => {
             insights: parsedInsights,
             timestamp: Date.now()
           };
-          setInsightsHistory(prev => [...prev, aiMoveInsight]);
+          console.log('[AI] Adding AI move insight to history:', aiMoveInsight);
+          setInsightsHistory(prev => {
+            const newHistory = [...prev, aiMoveInsight];
+            console.log('[AI] New insights history length:', newHistory.length);
+            return newHistory;
+          });
         })
         .catch(err => {
           console.log('[AI] Coach analysis failed after AI move:', err);
