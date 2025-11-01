@@ -183,7 +183,16 @@ export const useChess = (): UseChessReturn => {
   // Retry state for failed API calls
   const [failedAnalysisRequest, setFailedAnalysisRequest] = useState<AnalysisRequest | null>(null);
   const [needsRetry, setNeedsRetry] = useState<boolean>(false);
-  const [failedMoveData, setFailedMoveData] = useState<{ san: string; from: string; to: string; color: 'w' | 'b' } | null>(null);
+  const [failedMoveData, setFailedMoveData] = useState<{ 
+    san: string; 
+    from: string; 
+    to: string; 
+    color: 'w' | 'b';
+    piece: PieceType;
+    captured?: PieceType;
+    promotion?: PieceType;
+    flags: string;
+  } | null>(null);
 
   // AI game mode state
   const [isAiMode, setIsAiMode] = useState<boolean>(true);
@@ -275,6 +284,10 @@ export const useChess = (): UseChessReturn => {
             fromSquare: move.from,
             toSquare: move.to,
             color: move.color, // 'w' or 'b' from the move object
+            piece: move.piece as PieceType,
+            captured: move.captured as PieceType | undefined,
+            promotion: move.promotion as PieceType | undefined,
+            flags: move.flags,
             insights: parsedInsights,
             timestamp: Date.now()
           };
@@ -338,7 +351,11 @@ export const useChess = (): UseChessReturn => {
           san: move.san,
           from: move.from,
           to: move.to,
-          color: move.color
+          color: move.color,
+          piece: move.piece as PieceType,
+          captured: move.captured as PieceType | undefined,
+          promotion: move.promotion as PieceType | undefined,
+          flags: move.flags
         });
         setNeedsRetry(true);
         console.log('[COACH] Stored failed request for retry');
@@ -574,6 +591,10 @@ export const useChess = (): UseChessReturn => {
             fromSquare: moveResult.from,
             toSquare: moveResult.to,
             color: moveResult.color, // 'b' for AI (black)
+            piece: moveResult.piece as PieceType,
+            captured: moveResult.captured as PieceType | undefined,
+            promotion: moveResult.promotion as PieceType | undefined,
+            flags: moveResult.flags,
             insights: parsedInsights,
             timestamp: Date.now()
           };
@@ -594,7 +615,11 @@ export const useChess = (): UseChessReturn => {
             san: moveResult.san,
             from: moveResult.from,
             to: moveResult.to,
-            color: moveResult.color
+            color: moveResult.color,
+            piece: moveResult.piece as PieceType,
+            captured: moveResult.captured as PieceType | undefined,
+            promotion: moveResult.promotion as PieceType | undefined,
+            flags: moveResult.flags
           });
           setNeedsRetry(true);
           console.log('[AI] Stored failed AI move analysis for retry');
@@ -646,6 +671,10 @@ export const useChess = (): UseChessReturn => {
           fromSquare: failedMoveData.from,
           toSquare: failedMoveData.to,
           color: failedMoveData.color,
+          piece: failedMoveData.piece,
+          captured: failedMoveData.captured,
+          promotion: failedMoveData.promotion,
+          flags: failedMoveData.flags,
           insights: parsedInsights,
           timestamp: Date.now()
         };

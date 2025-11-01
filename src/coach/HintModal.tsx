@@ -4,6 +4,13 @@ import { Button } from 'primereact/button';
 import { Divider } from 'primereact/divider';
 import type { TutorInsights } from '../utils/difyParser';
 
+/**
+ * Note: Move suggestions in this modal display chess notation (SAN/UCI) rather than
+ * human-readable descriptions because they are forward-looking suggestions that haven't
+ * been played yet. We don't have full move details (piece type, captures, etc.) until
+ * a move is actually made. Historical moves in CoachModalContent use human-readable format.
+ */
+
 interface HintModalProps {
   visible: boolean;
   onHide: () => void;

@@ -6,6 +6,13 @@ import { Button } from 'primereact/button';
 import type { TutorInsights } from '../../../utils/difyParser';
 import type { MoveInsights } from '../../../types/chess';
 import { HintModal } from '../../../coach/HintModal';
+import { 
+  describeMoveWithSymbols, 
+  describeMoveHuman, 
+  getMoveCharacteristics 
+} from '../../../utils/moveDescriptions';
+import { useMoveDisplayPreference } from '../../../hooks/useMoveDisplayPreference';
+import { Tooltip } from 'primereact/tooltip';
 
 interface CoachModalContentProps {
   lastSan?: string;
@@ -33,6 +40,7 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hasViewedPanel, setHasViewedPanel] = useState(false);
   const [showHintModal, setShowHintModal] = useState(false);
+  const { showSymbols, toggleSymbols } = useMoveDisplayPreference();
 
   // Mark insights as viewed when panel is viewed
   useEffect(() => {
@@ -152,13 +160,87 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                     headerStyle={headerStyle}
                   >
                     <div className="p-3" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                      {/* Move notation */}
+                      {/* Human-readable move description */}
                       <div className="mb-3">
-                        <span className="font-medium">Move: </span>
-                        <span className="text-700">
-                          {moveInsight.fromSquare} → {moveInsight.toSquare}
-                        </span>
-                        <span className="text-500 ml-2">({moveInsight.san})</span>
+                        <div className="flex align-items-center justify-content-between mb-2">
+                          <span className="font-medium">Move: </span>
+                          <Button
+                            icon={showSymbols ? 'pi pi-eye-slash' : 'pi pi-eye'}
+                            text
+                            rounded
+                            size="small"
+                            onClick={toggleSymbols}
+                            tooltip={showSymbols ? 'Hide piece symbols' : 'Show piece symbols'}
+                            tooltipOptions={{ position: 'left' }}
+                            className="p-0 h-2rem w-2rem"
+                            aria-label={showSymbols ? 'Hide piece symbols' : 'Show piece symbols'}
+                          />
+                        </div>
+                        <div className="text-700 mt-1">
+                          {showSymbols ? describeMoveWithSymbols({
+                            piece: moveInsight.piece,
+                            from: moveInsight.fromSquare,
+                            to: moveInsight.toSquare,
+                            captured: moveInsight.captured,
+                            promotion: moveInsight.promotion,
+                            flags: moveInsight.flags,
+                            san: moveInsight.san,
+                          }) : describeMoveHuman({
+                            piece: moveInsight.piece,
+                            from: moveInsight.fromSquare,
+                            to: moveInsight.toSquare,
+                            captured: moveInsight.captured,
+                            promotion: moveInsight.promotion,
+                            flags: moveInsight.flags,
+                            san: moveInsight.san,
+                          })}
+                        </div>
+                        
+                        {/* Move characteristic badges */}
+                        {getMoveCharacteristics({
+                          piece: moveInsight.piece,
+                          from: moveInsight.fromSquare,
+                          to: moveInsight.toSquare,
+                          captured: moveInsight.captured,
+                          promotion: moveInsight.promotion,
+                          flags: moveInsight.flags,
+                          san: moveInsight.san,
+                        }).length > 0 && (
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            {getMoveCharacteristics({
+                              piece: moveInsight.piece,
+                              from: moveInsight.fromSquare,
+                              to: moveInsight.toSquare,
+                              captured: moveInsight.captured,
+                              promotion: moveInsight.promotion,
+                              flags: moveInsight.flags,
+                              san: moveInsight.san,
+                            }).map(char => (
+                              <span
+                                key={char}
+                                className={`notation-badge-${char.toLowerCase().replace(' ', '-')}`}
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  backgroundColor: '#e3f2fd',
+                                  color: '#1976d2',
+                                }}
+                              >
+                                {char}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        
+                        <div className="text-500 text-sm mt-2">
+                          <span className="notation-help" style={{ cursor: 'help' }}>
+                            Notation: {moveInsight.san} 
+                            <i className="pi pi-question-circle ml-1 text-xs" />
+                          </span>
+                        </div>
                       </div>
                       
                       {/* Full explanation */}
@@ -227,6 +309,22 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
         onHide={() => setShowHintModal(false)}
         insights={insights}
       />
+      
+      {/* Notation Help Tooltip */}
+      <Tooltip target=".notation-help" position="top">
+        <div className="text-sm" style={{ maxWidth: '300px' }}>
+          <strong>Chess Notation Guide:</strong><br/>
+          <div className="mt-1">
+            • <strong>Letters</strong> indicate pieces (K=King, Q=Queen, R=Rook, B=Bishop, N=Knight)<br/>
+            • <strong>x</strong> means capture<br/>
+            • <strong>+</strong> means check<br/>
+            • <strong>#</strong> means checkmate<br/>
+            • <strong>O-O</strong> means kingside castling<br/>
+            • <strong>O-O-O</strong> means queenside castling<br/>
+            • <strong>=Q</strong> means pawn promotion to Queen
+          </div>
+        </div>
+      </Tooltip>
     </div>
   );
 };
