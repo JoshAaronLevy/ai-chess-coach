@@ -136,6 +136,10 @@ interface UseChessReturn extends ChessGameState {
   // Coach insights actions
   markInsightsAsViewed: () => void;
   clearInsights: () => void;
+  // Retry functionality
+  retryLastAnalysis: () => void;
+  clearRetryState: () => void;
+  needsRetry: boolean;
   // AI game mode actions
   toggleAiMode: () => void;
   setAiThinking: (thinking: boolean) => void;
@@ -175,6 +179,11 @@ export const useChess = (): UseChessReturn => {
   const [hasNewInsights, setHasNewInsights] = useState<boolean>(false);
   const [isLoadingInsights, setIsLoadingInsights] = useState<boolean>(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  // Retry state for failed API calls
+  const [failedAnalysisRequest, setFailedAnalysisRequest] = useState<AnalysisRequest | null>(null);
+  const [needsRetry, setNeedsRetry] = useState<boolean>(false);
+  const [failedMoveData, setFailedMoveData] = useState<{ san: string; from: string; to: string; color: 'w' | 'b' } | null>(null);
 
   // AI game mode state
   const [isAiMode, setIsAiMode] = useState<boolean>(true);
@@ -323,6 +332,17 @@ export const useChess = (): UseChessReturn => {
         
         setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
         
+        // Store failed request for retry
+        setFailedAnalysisRequest(analysisRequest);
+        setFailedMoveData({
+          san: move.san,
+          from: move.from,
+          to: move.to,
+          color: move.color
+        });
+        setNeedsRetry(true);
+        console.log('[COACH] Stored failed request for retry');
+        
         // Enhanced AI-specific error cleanup
         if (isAiMode) {
           console.log('[AI] Clearing AI state due to API error');
@@ -353,19 +373,6 @@ export const useChess = (): UseChessReturn => {
     historySan
   ]); 
 
-  const undo = useCallback(() => {
-    const undoMove = gameEngineRef.current.undo();
-    if (undoMove) {
-      updateGameState();
-      gameLog.undoLast();
-      setInsightsHistory(prev => prev.slice(0, -1));
-      
-      const game = gameEngineRef.current.getChessInstance();
-      const analysisPayload = buildAnalysisPayload(game);
-      console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify(analysisPayload));
-    }
-  }, [updateGameState, gameLog]);
-
   const clearInsights = useCallback(() => {
     setInsights(null);
     setHasNewInsights(false);
@@ -373,11 +380,34 @@ export const useChess = (): UseChessReturn => {
     setInsightsError(null);
   }, []);
 
+  const clearRetryState = useCallback(() => {
+    setNeedsRetry(false);
+    setFailedAnalysisRequest(null);
+    setFailedMoveData(null);
+  }, []);
+
+  const undo = useCallback(() => {
+    const undoMove = gameEngineRef.current.undo();
+    if (undoMove) {
+      updateGameState();
+      gameLog.undoLast();
+      setInsightsHistory(prev => prev.slice(0, -1));
+      
+      // Clear retry state on undo
+      clearRetryState();
+      
+      const game = gameEngineRef.current.getChessInstance();
+      const analysisPayload = buildAnalysisPayload(game);
+      console.log('Complete Chess Board State for LLM (After Undo):', JSON.stringify(analysisPayload));
+    }
+  }, [updateGameState, gameLog, clearRetryState]);
+
   const reset = useCallback(() => {
     gameEngineRef.current.reset();
     updateGameState();
     gameLog.resetAll(gameEngineRef.current.fen());
     clearInsights();
+    clearRetryState();
     setInsightsHistory([]);
     
     checkHasSavedGame();
@@ -395,7 +425,7 @@ export const useChess = (): UseChessReturn => {
     const game = gameEngineRef.current.getChessInstance();
     const analysisPayload = buildAnalysisPayload(game);
     console.log('Complete Chess Board State for LLM (After Reset):', JSON.stringify(analysisPayload));
-  }, [updateGameState, gameLog, clearInsights, checkHasSavedGame, aiMoveTimeout]);
+  }, [updateGameState, gameLog, clearInsights, clearRetryState, checkHasSavedGame, aiMoveTimeout]);
 
   const isGameOver = useCallback((): boolean => {
     return gameEngineRef.current.isGameOver();
@@ -557,6 +587,17 @@ export const useChess = (): UseChessReturn => {
         .catch(err => {
           console.log('[AI] Coach analysis failed after AI move:', err);
           setInsightsError('Failed to get coaching analysis after AI move');
+          
+          // Store failed request for retry
+          setFailedAnalysisRequest(gradeRequest);
+          setFailedMoveData({
+            san: moveResult.san,
+            from: moveResult.from,
+            to: moveResult.to,
+            color: moveResult.color
+          });
+          setNeedsRetry(true);
+          console.log('[AI] Stored failed AI move analysis for retry');
         })
         .finally(() => {
           setIsLoadingInsights(false);
@@ -577,6 +618,65 @@ export const useChess = (): UseChessReturn => {
       return false;
     }
   }, [updateGameState, gameLog, isAiThinking, pendingAiMove, aiColor, aiMoveTimeout]);
+
+  const retryLastAnalysis = useCallback(() => {
+    if (!failedAnalysisRequest || !failedMoveData) {
+      console.warn('[RETRY] No failed request to retry');
+      return;
+    }
+
+    console.log('[RETRY] Retrying analysis request:', failedAnalysisRequest);
+    setIsLoadingInsights(true);
+    setInsightsError(null);
+    setNeedsRetry(false);
+
+    const game = gameEngineRef.current.getChessInstance();
+
+    ChessCoachApiService.analyzePosition(failedAnalysisRequest)
+      .then(parsedInsights => {
+        console.log('[RETRY] Analysis succeeded on retry');
+        setInsights(parsedInsights);
+        setHasNewInsights(true);
+        setInsightsError(null);
+
+        // Create and add move insight to history
+        const moveInsight: MoveInsights = {
+          moveNumber: game.history().length,
+          san: failedMoveData.san,
+          fromSquare: failedMoveData.from,
+          toSquare: failedMoveData.to,
+          color: failedMoveData.color,
+          insights: parsedInsights,
+          timestamp: Date.now()
+        };
+        console.log('[RETRY] Adding move insight to history after retry');
+        setInsightsHistory(prev => [...prev, moveInsight]);
+
+        // Clear retry state
+        clearRetryState();
+
+        // If this was a user move and AI should respond, trigger AI move
+        if (isAiMode && game.turn() === aiColor && !game.isGameOver() && failedMoveData.color === 'w') {
+          console.log('[RETRY] Triggering AI move after successful retry');
+          const moveSelection = AIPlayerService.selectMove(parsedInsights, difficulty);
+          
+          if (moveSelection) {
+            handleAiMoveResponse(moveSelection.move);
+          } else {
+            console.warn('[RETRY] No valid AI move found after retry');
+            setIsAiThinking(false);
+          }
+        }
+      })
+      .catch(err => {
+        console.log('[RETRY] Analysis failed again on retry:', err);
+        setInsightsError(err instanceof Error ? err.message : 'Coach API call failed');
+        setNeedsRetry(true); // Keep retry state so user can try again
+      })
+      .finally(() => {
+        setIsLoadingInsights(false);
+      });
+  }, [failedAnalysisRequest, failedMoveData, isAiMode, aiColor, difficulty, clearRetryState, handleAiMoveResponse]);
 
   const saveCurrentGame = useCallback((): boolean => {
     const gameData = gameEngineRef.current.toJSON(isAiMode);
@@ -665,6 +765,10 @@ export const useChess = (): UseChessReturn => {
     // Coach insights actions
     markInsightsAsViewed,
     clearInsights,
+    // Retry functionality
+    retryLastAnalysis,
+    clearRetryState,
+    needsRetry,
     // AI game mode actions
     toggleAiMode,
     setAiThinking,
@@ -701,6 +805,9 @@ export const useChess = (): UseChessReturn => {
     isGameOver,
     markInsightsAsViewed,
     clearInsights,
+    retryLastAnalysis,
+    clearRetryState,
+    needsRetry,
     toggleAiMode,
     setAiThinking,
     isAiTurn,
