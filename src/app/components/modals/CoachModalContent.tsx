@@ -61,7 +61,9 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   // Helper function to render move suggestions for a specific move
   const renderMoveSuggestions = (moveInsights: TutorInsights) => {
     if (!moveInsights.next_moves ||
-        !Object.values(moveInsights.next_moves).some(move => move?.uci || move?.san)) {
+        !(moveInsights.next_moves.beginner?.uci || moveInsights.next_moves.beginner?.san ||
+          moveInsights.next_moves.intermediate?.uci || moveInsights.next_moves.intermediate?.san ||
+          moveInsights.next_moves.advanced?.uci || moveInsights.next_moves.advanced?.san)) {
       return null;
     }
 

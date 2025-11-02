@@ -23,6 +23,7 @@ const AlternativeSchema = z.object({
 const DifficultyMoveSchema = z.object({
   uci: z.string().optional().nullable(),
   san: z.string().optional().nullable(),
+  why: z.string().optional(),
 });
 
 /**
@@ -32,6 +33,7 @@ const NextMovesSchema = z.object({
   beginner: DifficultyMoveSchema.optional(),
   intermediate: DifficultyMoveSchema.optional(),
   advanced: DifficultyMoveSchema.optional(),
+  reasoning: z.string().optional(),
 });
 
 /**
@@ -74,9 +76,10 @@ export interface TutorInsights {
     san: string;
   } | null;
   next_moves?: {
-    beginner?: { uci?: string | null; san?: string | null };
-    intermediate?: { uci?: string | null; san?: string | null };
-    advanced?: { uci?: string | null; san?: string | null };
+    beginner?: { uci?: string | null; san?: string | null; why?: string };
+    intermediate?: { uci?: string | null; san?: string | null; why?: string };
+    advanced?: { uci?: string | null; san?: string | null; why?: string };
+    reasoning?: string;
   };
   alternatives: Array<{
     uci: string;
