@@ -206,11 +206,23 @@ export function parseDifyAnswer(rawResponse: unknown): TutorInsights | null {
     return tutorInsights;
     
   } catch (error) {
-    // Log a single concise warning on parsing failure
+    // Log detailed information on parsing failure
     if (error instanceof z.ZodError) {
-      console.warn('[DifyParser] Validation failed:', error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', '));
+      console.error('[DifyParser] Validation failed:', {
+        issues: error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+          code: i.code,
+          received: 'received' in i ? i.received : undefined
+        })),
+        rawResponse: JSON.stringify(rawResponse, null, 2)
+      });
     } else {
-      console.warn('[DifyParser] Parsing failed:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('[DifyParser] Parsing failed:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        rawResponse: JSON.stringify(rawResponse, null, 2)
+      });
     }
     return null;
   }
