@@ -31,6 +31,10 @@ export function GamePage() {
     hasNewInsights,
     isLoadingInsights,
     markInsightsAsViewed,
+    // Retry functionality
+    retryLastAnalysis,
+    clearRetryState,
+    needsRetry,
     // AI state and functions (AI is always on now)
     isAiThinking,
     // Save game functionality
@@ -90,6 +94,55 @@ export function GamePage() {
     // Update the previous state
     previousHasNewInsights.current = hasNewInsights;
   }, [hasNewInsights, insights]);
+
+  // Show persistent error toast when API call fails and needs retry
+  useEffect(() => {
+    if (needsRetry) {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'AI Coach Analysis Failed',
+        detail: 'The coaching analysis could not be completed. The game is paused.',
+        sticky: true, // Persistent - won't auto-dismiss
+        closable: true,
+        content: (props) => (
+          <div className="flex flex-column gap-2 p-3">
+            <div className="flex align-items-center gap-2">
+              <i className="pi pi-exclamation-triangle text-2xl text-red-500" />
+              <div className="flex flex-column flex-1">
+                <span className="font-bold text-lg">{props.message.summary}</span>
+                <span className="text-sm">{props.message.detail}</span>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Button
+                label="Retry Analysis"
+                icon="pi pi-refresh"
+                onClick={() => {
+                  retryLastAnalysis();
+                  toast.current?.clear();
+                }}
+                className="flex-1"
+                severity="success"
+                size="small"
+              />
+              <Button
+                label="Undo Move"
+                icon="pi pi-undo"
+                onClick={() => {
+                  undo();
+                  clearRetryState();
+                  toast.current?.clear();
+                }}
+                className="flex-1"
+                severity="secondary"
+                size="small"
+              />
+            </div>
+          </div>
+        )
+      });
+    }
+  }, [needsRetry, retryLastAnalysis, undo, clearRetryState]);
 
   // Handle save game button click
   const handleSaveGame = () => {

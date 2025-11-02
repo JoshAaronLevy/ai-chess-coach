@@ -4,8 +4,14 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
 import type { TutorInsights } from '../../../utils/difyParser';
+import { describeSuggestedMove } from '../../../utils/difyParser';
 import type { MoveInsights } from '../../../types/chess';
 import { HintModal } from '../../../coach/HintModal';
+import { 
+  describeMoveWithSymbols, 
+  getMoveCharacteristics 
+} from '../../../utils/moveDescriptions';
+import { Tooltip } from 'primereact/tooltip';
 
 interface CoachModalContentProps {
   lastSan?: string;
@@ -56,7 +62,9 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   // Helper function to render move suggestions for a specific move
   const renderMoveSuggestions = (moveInsights: TutorInsights) => {
     if (!moveInsights.next_moves ||
-        !Object.values(moveInsights.next_moves).some(move => move?.uci || move?.san)) {
+        !(moveInsights.next_moves.beginner?.uci || moveInsights.next_moves.beginner?.san ||
+          moveInsights.next_moves.intermediate?.uci || moveInsights.next_moves.intermediate?.san ||
+          moveInsights.next_moves.advanced?.uci || moveInsights.next_moves.advanced?.san)) {
       return null;
     }
 
@@ -71,33 +79,72 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
           }
         >
           <div className="text-700 line-height-3 p-2" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-            <div className="flex flex-column gap-2">
+            <div className="flex flex-column gap-3">
               {moveInsights.next_moves.advanced?.uci || moveInsights.next_moves.advanced?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Advanced: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.advanced.san || moveInsights.next_moves.advanced.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Advanced: </span>
+                    <span className="font-bold text-900">
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.advanced.uci, 
+                        moveInsights.next_moves.advanced.san
+                      )}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.advanced.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.advanced.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
               
               {moveInsights.next_moves.intermediate?.uci || moveInsights.next_moves.intermediate?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Intermediate: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.intermediate.san || moveInsights.next_moves.intermediate.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Intermediate: </span>
+                    <span className="font-bold text-900">
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.intermediate.uci, 
+                        moveInsights.next_moves.intermediate.san
+                      )}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.intermediate.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.intermediate.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
               
               {moveInsights.next_moves.beginner?.uci || moveInsights.next_moves.beginner?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Beginner: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.beginner.san || moveInsights.next_moves.beginner.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Beginner: </span>
+                    <span className="font-bold text-900">
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.beginner.uci, 
+                        moveInsights.next_moves.beginner.san
+                      )}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.beginner.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.beginner.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
+              
+              {moveInsights.next_moves.reasoning && (
+                <div className="mt-2 pt-2 border-top-1 surface-border">
+                  <div className="text-700 text-sm">
+                    <i className="pi pi-info-circle mr-2" />
+                    {moveInsights.next_moves.reasoning}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </AccordionTab>
@@ -136,29 +183,84 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
               {insightsHistory.slice().reverse().map((moveInsight) => {
                 const moveNumber = moveInsight.moveNumber;
                 const grade = moveInsight.insights.lastMove?.grade || '';
-                const isWhiteMove = moveNumber % 2 === 1; // Odd = white, even = black
+                const isWhiteMove = moveInsight.color === 'w'; // 'w' = white/user, 'b' = black/AI
                 
-                // Header styling
+                // Header styling: light theme for user (white), dark theme for AI (black)
                 const headerStyle = {
-                  backgroundColor: isWhiteMove ? '#ffffff' : '#2d2d2d',
+                  backgroundColor: isWhiteMove ? '#f8f9fa' : '#2d2d2d',
                   color: isWhiteMove ? '#000000' : '#ffffff',
                 };
                 
                 return (
                   <AccordionTab
                     key={moveInsight.timestamp}
-                    header={`Move ${moveNumber} - ${grade}`}
+                    header={`Move ${moveNumber} - ${grade} ${isWhiteMove ? '(User)' : '(AI)'}`}
                     headerClassName="font-semibold"
                     headerStyle={headerStyle}
                   >
                     <div className="p-3" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                      {/* Move notation */}
+                      {/* Human-readable move description */}
                       <div className="mb-3">
-                        <span className="font-medium">Move: </span>
-                        <span className="text-700">
-                          {moveInsight.fromSquare} → {moveInsight.toSquare}
-                        </span>
-                        <span className="text-500 ml-2">({moveInsight.san})</span>
+                        <div className="flex align-items-center justify-content-between mb-2">
+                          <span className="font-medium">Move: </span>
+                        </div>
+                        <div className="text-700 mt-1">
+                          {describeMoveWithSymbols({
+                            piece: moveInsight.piece,
+                            from: moveInsight.fromSquare,
+                            to: moveInsight.toSquare,
+                            captured: moveInsight.captured,
+                            promotion: moveInsight.promotion,
+                            flags: moveInsight.flags,
+                            san: moveInsight.san,
+                          })}
+                        </div>
+                        
+                        {/* Move characteristic badges */}
+                        {getMoveCharacteristics({
+                          piece: moveInsight.piece,
+                          from: moveInsight.fromSquare,
+                          to: moveInsight.toSquare,
+                          captured: moveInsight.captured,
+                          promotion: moveInsight.promotion,
+                          flags: moveInsight.flags,
+                          san: moveInsight.san,
+                        }).length > 0 && (
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            {getMoveCharacteristics({
+                              piece: moveInsight.piece,
+                              from: moveInsight.fromSquare,
+                              to: moveInsight.toSquare,
+                              captured: moveInsight.captured,
+                              promotion: moveInsight.promotion,
+                              flags: moveInsight.flags,
+                              san: moveInsight.san,
+                            }).map(char => (
+                              <span
+                                key={char}
+                                className={`notation-badge-${char.toLowerCase().replace(' ', '-')}`}
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: '0.25rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '600',
+                                  backgroundColor: '#e3f2fd',
+                                  color: '#1976d2',
+                                }}
+                              >
+                                {char}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        
+                        <div className="text-500 text-sm mt-2">
+                          <span className="notation-help" style={{ cursor: 'help' }}>
+                            Notation: {moveInsight.san} 
+                            <i className="pi pi-question-circle ml-1 text-xs" />
+                          </span>
+                        </div>
                       </div>
                       
                       {/* Full explanation */}
@@ -227,6 +329,22 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
         onHide={() => setShowHintModal(false)}
         insights={insights}
       />
+      
+      {/* Notation Help Tooltip */}
+      <Tooltip target=".notation-help" position="top">
+        <div className="text-sm" style={{ maxWidth: '300px' }}>
+          <strong>Chess Notation Guide:</strong><br/>
+          <div className="mt-1">
+            • <strong>Letters</strong> indicate pieces (K=King, Q=Queen, R=Rook, B=Bishop, N=Knight)<br/>
+            • <strong>x</strong> means capture<br/>
+            • <strong>+</strong> means check<br/>
+            • <strong>#</strong> means checkmate<br/>
+            • <strong>O-O</strong> means kingside castling<br/>
+            • <strong>O-O-O</strong> means queenside castling<br/>
+            • <strong>=Q</strong> means pawn promotion to Queen
+          </div>
+        </div>
+      </Tooltip>
     </div>
   );
 };

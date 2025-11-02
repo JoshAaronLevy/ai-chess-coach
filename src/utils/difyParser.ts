@@ -23,6 +23,7 @@ const AlternativeSchema = z.object({
 const DifficultyMoveSchema = z.object({
   uci: z.string().optional().nullable(),
   san: z.string().optional().nullable(),
+  why: z.string().optional(),
 });
 
 /**
@@ -32,6 +33,7 @@ const NextMovesSchema = z.object({
   beginner: DifficultyMoveSchema.optional(),
   intermediate: DifficultyMoveSchema.optional(),
   advanced: DifficultyMoveSchema.optional(),
+  reasoning: z.string().optional(),
 });
 
 /**
@@ -74,9 +76,10 @@ export interface TutorInsights {
     san: string;
   } | null;
   next_moves?: {
-    beginner?: { uci?: string | null; san?: string | null };
-    intermediate?: { uci?: string | null; san?: string | null };
-    advanced?: { uci?: string | null; san?: string | null };
+    beginner?: { uci?: string | null; san?: string | null; why?: string };
+    intermediate?: { uci?: string | null; san?: string | null; why?: string };
+    advanced?: { uci?: string | null; san?: string | null; why?: string };
+    reasoning?: string;
   };
   alternatives: Array<{
     uci: string;
@@ -203,11 +206,23 @@ export function parseDifyAnswer(rawResponse: unknown): TutorInsights | null {
     return tutorInsights;
     
   } catch (error) {
-    // Log a single concise warning on parsing failure
+    // Log detailed information on parsing failure
     if (error instanceof z.ZodError) {
-      console.warn('[DifyParser] Validation failed:', error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', '));
+      console.error('[DifyParser] Validation failed:', {
+        issues: error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+          code: i.code,
+          received: 'received' in i ? i.received : undefined
+        })),
+        rawResponse: JSON.stringify(rawResponse, null, 2)
+      });
     } else {
-      console.warn('[DifyParser] Parsing failed:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('[DifyParser] Parsing failed:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        rawResponse: JSON.stringify(rawResponse, null, 2)
+      });
     }
     return null;
   }
@@ -217,3 +232,78 @@ export function parseDifyAnswer(rawResponse: unknown): TutorInsights | null {
  * Alias for parseDifyAnswer - alternative naming as requested in requirements
  */
 export const extractTutorInsights = parseDifyAnswer;
+
+/**
+ * Converts a chess move from UCI and/or SAN notation into a human-readable description.
+ * 
+ * @param uci - Universal Chess Interface notation (e.g., "g8f6")
+ * @param san - Standard Algebraic Notation (e.g., "Nf6")
+ * @returns A human-readable description of the move
+ * 
+ * @example
+ * describeSuggestedMove("g8f6", "Nf6") // Returns: "Knight from g8 to f6"
+ * describeSuggestedMove("e2e4", "e4") // Returns: "Pawn from e2 to e4"
+ */
+export function describeSuggestedMove(uci?: string | null, san?: string | null): string {
+  if (!uci && !san) return 'Unknown move';
+  
+  // Map of piece letters to names
+  const pieceNames: Record<string, string> = {
+    'K': 'King',
+    'Q': 'Queen',
+    'R': 'Rook',
+    'B': 'Bishop',
+    'N': 'Knight',
+  };
+  
+  // If we have UCI notation, parse it
+  if (uci && uci.length >= 4) {
+    const from = uci.substring(0, 2);
+    const to = uci.substring(2, 4);
+    
+    // Determine piece type from SAN if available
+    let pieceName = 'Pawn'; // Default to pawn
+    if (san && san.length > 0) {
+      const firstChar = san.charAt(0);
+      if (pieceNames[firstChar]) {
+        pieceName = pieceNames[firstChar];
+      }
+      
+      // Check for castling
+      if (san === 'O-O' || san === '0-0') {
+        return 'Castle kingside';
+      } else if (san === 'O-O-O' || san === '0-0-0') {
+        return 'Castle queenside';
+      }
+    }
+    
+    return `${pieceName} from ${from} to ${to}`;
+  }
+  
+  // Fallback to SAN only
+  if (san) {
+    // Handle castling
+    if (san === 'O-O' || san === '0-0') {
+      return 'Castle kingside';
+    } else if (san === 'O-O-O' || san === '0-0-0') {
+      return 'Castle queenside';
+    }
+    
+    // Try to extract piece and destination
+    const firstChar = san.charAt(0);
+    const pieceName = pieceNames[firstChar] || 'Pawn';
+    
+    // Extract destination square (last 2 chars, ignoring check/checkmate symbols)
+    const cleanSan = san.replace(/[+#]/g, '');
+    const destMatch = cleanSan.match(/[a-h][1-8]$/);
+    const destination = destMatch ? destMatch[0] : cleanSan;
+    
+    if (pieceName === 'Pawn') {
+      return `Pawn to ${destination}`;
+    } else {
+      return `${pieceName} to ${destination}`;
+    }
+  }
+  
+  return 'Unknown move';
+}

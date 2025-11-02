@@ -9,6 +9,11 @@ export interface MoveInsights {
   san: string;
   fromSquare: string;
   toSquare: string;
+  color: Color; // 'w' for white/user, 'b' for black/AI
+  piece: PieceType;
+  captured?: PieceType;
+  promotion?: PieceType;
+  flags: string;
   insights: TutorInsights;
   timestamp: number;
 }
