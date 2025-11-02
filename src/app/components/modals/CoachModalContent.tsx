@@ -4,6 +4,7 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
 import type { TutorInsights } from '../../../utils/difyParser';
+import { describeSuggestedMove } from '../../../utils/difyParser';
 import type { MoveInsights } from '../../../types/chess';
 import { HintModal } from '../../../coach/HintModal';
 import { 
@@ -84,7 +85,10 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                   <div className="mb-1">
                     <span className="font-semibold text-800">Advanced: </span>
                     <span className="font-bold text-900">
-                      {moveInsights.next_moves.advanced.san || moveInsights.next_moves.advanced.uci}
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.advanced.uci, 
+                        moveInsights.next_moves.advanced.san
+                      )}
                     </span>
                   </div>
                   {moveInsights.next_moves.advanced.why && (
@@ -100,7 +104,10 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                   <div className="mb-1">
                     <span className="font-semibold text-800">Intermediate: </span>
                     <span className="font-bold text-900">
-                      {moveInsights.next_moves.intermediate.san || moveInsights.next_moves.intermediate.uci}
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.intermediate.uci, 
+                        moveInsights.next_moves.intermediate.san
+                      )}
                     </span>
                   </div>
                   {moveInsights.next_moves.intermediate.why && (
@@ -116,7 +123,10 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                   <div className="mb-1">
                     <span className="font-semibold text-800">Beginner: </span>
                     <span className="font-bold text-900">
-                      {moveInsights.next_moves.beginner.san || moveInsights.next_moves.beginner.uci}
+                      {describeSuggestedMove(
+                        moveInsights.next_moves.beginner.uci, 
+                        moveInsights.next_moves.beginner.san
+                      )}
                     </span>
                   </div>
                   {moveInsights.next_moves.beginner.why && (

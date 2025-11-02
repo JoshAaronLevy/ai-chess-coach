@@ -232,3 +232,78 @@ export function parseDifyAnswer(rawResponse: unknown): TutorInsights | null {
  * Alias for parseDifyAnswer - alternative naming as requested in requirements
  */
 export const extractTutorInsights = parseDifyAnswer;
+
+/**
+ * Converts a chess move from UCI and/or SAN notation into a human-readable description.
+ * 
+ * @param uci - Universal Chess Interface notation (e.g., "g8f6")
+ * @param san - Standard Algebraic Notation (e.g., "Nf6")
+ * @returns A human-readable description of the move
+ * 
+ * @example
+ * describeSuggestedMove("g8f6", "Nf6") // Returns: "Knight from g8 to f6"
+ * describeSuggestedMove("e2e4", "e4") // Returns: "Pawn from e2 to e4"
+ */
+export function describeSuggestedMove(uci?: string | null, san?: string | null): string {
+  if (!uci && !san) return 'Unknown move';
+  
+  // Map of piece letters to names
+  const pieceNames: Record<string, string> = {
+    'K': 'King',
+    'Q': 'Queen',
+    'R': 'Rook',
+    'B': 'Bishop',
+    'N': 'Knight',
+  };
+  
+  // If we have UCI notation, parse it
+  if (uci && uci.length >= 4) {
+    const from = uci.substring(0, 2);
+    const to = uci.substring(2, 4);
+    
+    // Determine piece type from SAN if available
+    let pieceName = 'Pawn'; // Default to pawn
+    if (san && san.length > 0) {
+      const firstChar = san.charAt(0);
+      if (pieceNames[firstChar]) {
+        pieceName = pieceNames[firstChar];
+      }
+      
+      // Check for castling
+      if (san === 'O-O' || san === '0-0') {
+        return 'Castle kingside';
+      } else if (san === 'O-O-O' || san === '0-0-0') {
+        return 'Castle queenside';
+      }
+    }
+    
+    return `${pieceName} from ${from} to ${to}`;
+  }
+  
+  // Fallback to SAN only
+  if (san) {
+    // Handle castling
+    if (san === 'O-O' || san === '0-0') {
+      return 'Castle kingside';
+    } else if (san === 'O-O-O' || san === '0-0-0') {
+      return 'Castle queenside';
+    }
+    
+    // Try to extract piece and destination
+    const firstChar = san.charAt(0);
+    const pieceName = pieceNames[firstChar] || 'Pawn';
+    
+    // Extract destination square (last 2 chars, ignoring check/checkmate symbols)
+    const cleanSan = san.replace(/[+#]/g, '');
+    const destMatch = cleanSan.match(/[a-h][1-8]$/);
+    const destination = destMatch ? destMatch[0] : cleanSan;
+    
+    if (pieceName === 'Pawn') {
+      return `Pawn to ${destination}`;
+    } else {
+      return `${pieceName} to ${destination}`;
+    }
+  }
+  
+  return 'Unknown move';
+}
