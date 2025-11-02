@@ -8,10 +8,8 @@ import type { MoveInsights } from '../../../types/chess';
 import { HintModal } from '../../../coach/HintModal';
 import { 
   describeMoveWithSymbols, 
-  describeMoveHuman, 
   getMoveCharacteristics 
 } from '../../../utils/moveDescriptions';
-import { useMoveDisplayPreference } from '../../../hooks/useMoveDisplayPreference';
 import { Tooltip } from 'primereact/tooltip';
 
 interface CoachModalContentProps {
@@ -40,7 +38,6 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hasViewedPanel, setHasViewedPanel] = useState(false);
   const [showHintModal, setShowHintModal] = useState(false);
-  const { showSymbols, toggleSymbols } = useMoveDisplayPreference();
 
   // Mark insights as viewed when panel is viewed
   useEffect(() => {
@@ -164,28 +161,9 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
                       <div className="mb-3">
                         <div className="flex align-items-center justify-content-between mb-2">
                           <span className="font-medium">Move: </span>
-                          <Button
-                            icon={showSymbols ? 'pi pi-eye-slash' : 'pi pi-eye'}
-                            text
-                            rounded
-                            size="small"
-                            onClick={toggleSymbols}
-                            tooltip={showSymbols ? 'Hide piece symbols' : 'Show piece symbols'}
-                            tooltipOptions={{ position: 'left' }}
-                            className="p-0 h-2rem w-2rem"
-                            aria-label={showSymbols ? 'Hide piece symbols' : 'Show piece symbols'}
-                          />
                         </div>
                         <div className="text-700 mt-1">
-                          {showSymbols ? describeMoveWithSymbols({
-                            piece: moveInsight.piece,
-                            from: moveInsight.fromSquare,
-                            to: moveInsight.toSquare,
-                            captured: moveInsight.captured,
-                            promotion: moveInsight.promotion,
-                            flags: moveInsight.flags,
-                            san: moveInsight.san,
-                          }) : describeMoveHuman({
+                          {describeMoveWithSymbols({
                             piece: moveInsight.piece,
                             from: moveInsight.fromSquare,
                             to: moveInsight.toSquare,
