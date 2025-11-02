@@ -78,33 +78,63 @@ export const CoachModalContent: React.FC<CoachModalContentProps> = ({
           }
         >
           <div className="text-700 line-height-3 p-2" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-            <div className="flex flex-column gap-2">
+            <div className="flex flex-column gap-3">
               {moveInsights.next_moves.advanced?.uci || moveInsights.next_moves.advanced?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Advanced: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.advanced.san || moveInsights.next_moves.advanced.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Advanced: </span>
+                    <span className="font-bold text-900">
+                      {moveInsights.next_moves.advanced.san || moveInsights.next_moves.advanced.uci}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.advanced.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.advanced.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
               
               {moveInsights.next_moves.intermediate?.uci || moveInsights.next_moves.intermediate?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Intermediate: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.intermediate.san || moveInsights.next_moves.intermediate.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Intermediate: </span>
+                    <span className="font-bold text-900">
+                      {moveInsights.next_moves.intermediate.san || moveInsights.next_moves.intermediate.uci}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.intermediate.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.intermediate.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
               
               {moveInsights.next_moves.beginner?.uci || moveInsights.next_moves.beginner?.san ? (
                 <div>
-                  <span className="font-semibold text-800">Beginner: </span>
-                  <span className="font-medium">
-                    {moveInsights.next_moves.beginner.san || moveInsights.next_moves.beginner.uci}
-                  </span>
+                  <div className="mb-1">
+                    <span className="font-semibold text-800">Beginner: </span>
+                    <span className="font-bold text-900">
+                      {moveInsights.next_moves.beginner.san || moveInsights.next_moves.beginner.uci}
+                    </span>
+                  </div>
+                  {moveInsights.next_moves.beginner.why && (
+                    <div className="text-600 text-sm ml-3">
+                      {moveInsights.next_moves.beginner.why}
+                    </div>
+                  )}
                 </div>
               ) : null}
+              
+              {moveInsights.next_moves.reasoning && (
+                <div className="mt-2 pt-2 border-top-1 surface-border">
+                  <div className="text-700 text-sm">
+                    <i className="pi pi-info-circle mr-2" />
+                    {moveInsights.next_moves.reasoning}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </AccordionTab>
