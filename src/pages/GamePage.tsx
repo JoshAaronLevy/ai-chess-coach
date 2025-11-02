@@ -2,14 +2,12 @@ import { Chessboard } from 'react-chessboard';
 import type { PieceDropHandlerArgs, SquareHandlerArgs, PieceHandlerArgs } from 'react-chessboard';
 import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
-import { Tag } from 'primereact/tag';
+// import { Tag } from 'primereact/tag';
 import { useChess } from '../chess/useChess';
 import { useSectionModals } from '../hooks/useSectionModals';
 import { SectionButtons } from '../app/components/SectionButtons';
 import { SectionModal } from '../app/components/modals/SectionModal';
 import { CoachModalContent } from '../app/components/modals/CoachModalContent';
-import { GameLogModalContent } from '../app/components/modals/GameLogModalContent';
-import { MoveListModalContent } from '../app/components/modals/MoveListModalContent';
 import { DifficultyModal } from '../app/components/modals/DifficultyModal';
 import { useAiDifficultyStore, type AiDifficulty } from '../store/aiDifficultyStore';
 import '../App.css';
@@ -21,15 +19,22 @@ export function GamePage() {
     turn,
     historySan,
     lastSan,
+    lastMoveFrom,
+    lastMoveTo,
     gameOver,
     gameResult,
     onPieceDrop,
     undo,
     reset,
     insights,
+    insightsHistory,
     hasNewInsights,
     isLoadingInsights,
     markInsightsAsViewed,
+    // Retry functionality
+    retryLastAnalysis,
+    clearRetryState,
+    needsRetry,
     // AI state and functions (AI is always on now)
     isAiThinking,
     // Save game functionality
@@ -55,14 +60,14 @@ export function GamePage() {
     return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
   };
 
-  const getDifficultySeverity = (difficulty: AiDifficulty | null) => {
-    switch (difficulty) {
-      case 'beginner': return 'success';
-      case 'intermediate': return 'info';
-      case 'advanced': return 'danger';
-      default: return 'secondary';
-    }
-  };
+  // const getDifficultySeverity = (difficulty: AiDifficulty | null) => {
+  //   switch (difficulty) {
+  //     case 'beginner': return 'success';
+  //     case 'intermediate': return 'info';
+  //     case 'advanced': return 'danger';
+  //     default: return 'secondary';
+  //   }
+  // };
 
   // Auto-open modal on initial load if no difficulty set
   useEffect(() => {
@@ -89,6 +94,55 @@ export function GamePage() {
     // Update the previous state
     previousHasNewInsights.current = hasNewInsights;
   }, [hasNewInsights, insights]);
+
+  // Show persistent error toast when API call fails and needs retry
+  useEffect(() => {
+    if (needsRetry) {
+      toast.current?.show({
+        severity: 'error',
+        summary: 'AI Coach Analysis Failed',
+        detail: 'The coaching analysis could not be completed. The game is paused.',
+        sticky: true, // Persistent - won't auto-dismiss
+        closable: true,
+        content: (props) => (
+          <div className="flex flex-column gap-2 p-3">
+            <div className="flex align-items-center gap-2">
+              <i className="pi pi-exclamation-triangle text-2xl text-red-500" />
+              <div className="flex flex-column flex-1">
+                <span className="font-bold text-lg">{props.message.summary}</span>
+                <span className="text-sm">{props.message.detail}</span>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Button
+                label="Retry Analysis"
+                icon="pi pi-refresh"
+                onClick={() => {
+                  retryLastAnalysis();
+                  toast.current?.clear();
+                }}
+                className="flex-1"
+                severity="success"
+                size="small"
+              />
+              <Button
+                label="Undo Move"
+                icon="pi pi-undo"
+                onClick={() => {
+                  undo();
+                  clearRetryState();
+                  toast.current?.clear();
+                }}
+                className="flex-1"
+                severity="secondary"
+                size="small"
+              />
+            </div>
+          </div>
+        )
+      });
+    }
+  }, [needsRetry, retryLastAnalysis, undo, clearRetryState]);
 
   // Handle save game button click
   const handleSaveGame = () => {
@@ -242,18 +296,32 @@ export function GamePage() {
               aria-label="Change AI difficulty"
               title="Click to change AI difficulty level"
             >
-              <Tag
-                value={getDifficultyLabel(difficulty).charAt(0)}
-                severity={getDifficultySeverity(difficulty)}
-                style={{ minWidth: '1.5rem', height: '1.5rem' }}
-                className="text-xs font-bold"
-              />
-              <span>{getDifficultyLabel(difficulty)}</span>
+              <span className="difficulty-label">{getDifficultyLabel(difficulty)}</span>
             </Button>
           </div>
 
+          {/* Section Buttons */}
+          <SectionButtons
+            onOpenCoach={() => openModal('coach')}
+            hasNewInsights={hasNewInsights}
+            moveCount={historySan.length}
+          />
+
           {/* Control Buttons */}
           <div className="flex flex-column gap-2" role="group" aria-label="Game controls">
+            <Button
+              label="New Game"
+              icon="pi pi-plus"
+              onClick={() => {
+                reset();
+                openDifficultyModal();
+              }}
+              disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
+              className="w-full"
+              severity="info"
+              aria-label="Start a new chess game"
+              title="Start a new chess game"
+            />
             <Button
               label="Save Game"
               icon="pi pi-save"
@@ -284,33 +352,9 @@ export function GamePage() {
               aria-label="Undo the last move"
               title="Undo the last move"
             />
-            <Button
-              label="New Game"
-              icon="pi pi-refresh"
-              onClick={() => {
-                reset();
-                openDifficultyModal();
-              }}
-              disabled={(historySan.length === 0 && !gameOver) || isAiThinking}
-              className="w-full"
-              severity="info"
-              aria-label="Start a new chess game"
-              title="Start a new chess game"
-            />
           </div>
-
-          {/* Section Buttons */}
-          <SectionButtons
-            onOpenCoach={() => openModal('coach')}
-            onOpenGameLog={() => openModal('gamelog')}
-            onOpenMoveList={() => openModal('movelist')}
-            hasNewInsights={hasNewInsights}
-            moveCount={historySan.length}
-          />
         </div>
       </div>
-
-      {/* Section Modals */}
       
       {/* Coach Feedback Modal */}
       <SectionModal
@@ -322,36 +366,17 @@ export function GamePage() {
       >
         <CoachModalContent
           lastSan={lastSan}
+          lastMoveFrom={lastMoveFrom}
+          lastMoveTo={lastMoveTo}
           gameOver={gameOver}
           gameResult={gameResult}
           insights={insights}
+          insightsHistory={insightsHistory}
           hasNewInsights={hasNewInsights}
           isLoadingInsights={isLoadingInsights}
           onMarkInsightsViewed={markInsightsAsViewed}
         />
       </SectionModal>
-
-      {/* Game Log Modal */}
-      <SectionModal
-        visible={isModalOpen('gamelog')}
-        onHide={closeModal}
-        sectionType="gamelog"
-        title="Game Log Debug"
-        size="medium"
-      >
-        <GameLogModalContent />
-      </SectionModal>
-
-      {/* Move History Modal */}
-      <SectionModal
-        visible={isModalOpen('movelist')}
-        onHide={closeModal}
-        sectionType="movelist"
-        title="Move History"
-        size="small"
-      >
-        <MoveListModalContent history={historySan} />
-        </SectionModal>
   
         {/* AI Difficulty Modal */}
         <DifficultyModal />

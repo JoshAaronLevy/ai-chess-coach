@@ -1,6 +1,22 @@
 import type { Color, PieceType } from './gameLog.js';
+import type { TutorInsights } from '../utils/difyParser.js';
 
-export type { Color, PieceType };
+// Re-export types used by this module
+export type { Color, PieceType } from './gameLog.js';
+
+export interface MoveInsights {
+  moveNumber: number;
+  san: string;
+  fromSquare: string;
+  toSquare: string;
+  color: Color; // 'w' for white/user, 'b' for black/AI
+  piece: PieceType;
+  captured?: PieceType;
+  promotion?: PieceType;
+  flags: string;
+  insights: TutorInsights;
+  timestamp: number;
+}
 
 export interface LegalMoveDetailed {
   san: string;
@@ -13,9 +29,4 @@ export interface LegalMoveDetailed {
   promotion?: PieceType;
   flags: string;
   givesCheck: boolean;
-}
-
-export interface BoardStateAugmented {
-  positionId: string;                 // hex string
-  legalMovesDetailed: LegalMoveDetailed[];
 }

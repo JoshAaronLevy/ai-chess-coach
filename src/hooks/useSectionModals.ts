@@ -9,10 +9,6 @@ export interface UseSectionModalsReturn {
   isModalOpen: (section: SectionType) => boolean;
 }
 
-/**
- * Custom hook to manage which section modal is currently open.
- * Only one modal can be open at a time.
- */
 export function useSectionModals(): UseSectionModalsReturn {
   const [activeModal, setActiveModal] = useState<SectionType>(null);
 
